@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能點名系統 (全功能修復版)</title>
+    <title>智能點名系統 (全動態修復版)</title>
     <!-- 引入 SheetJS 處理 Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
@@ -95,9 +95,7 @@
         <label for="excelFile">1. 匯入 Excel 點名紙：</label>
         <input type="file" id="excelFile" accept=".xlsx, .xls" multiple>
         <div class="tips">
-            🛠️ <b>修復完成：</b>
-            1. 學生識別碼改為「班別+學號+姓名」，解決同名同姓學生被覆蓋遺漏問題。<br>
-            2. 智能轉換 Excel 日期格式，解決重複匯入後日期變成亂碼的問題。
+            ✨ <b>全動態標籤修復版：</b> 自動精準辨識欄位座標，解決匯出檔案再重新匯入時「訓練日期變少」及「遺漏學生」的問題。
         </div>
     </div>
 
@@ -207,7 +205,7 @@
         { num: 0, label: "日" }
     ];
 
-    const LOCAL_STORAGE_KEY = "SMART_ROLLCALL_DATA_V9";
+    const LOCAL_STORAGE_KEY = "SMART_ROLLCALL_DATA_V10";
 
     const excelFileInput = document.getElementById('excelFile');
     const appWorkspace = document.getElementById('appWorkspace');
@@ -221,11 +219,15 @@
 
     window.addEventListener('DOMContentLoaded', loadDataFromStorage);
 
-    // 強制日期解析為 YYYY-MM-DD，徹底解決再匯入亂碼問題
+    function sanitizeStr(val) {
+        if (val === null || val === undefined) return "";
+        return val.toString().trim().replace(/[\r\n]+/g, ' ');
+    }
+
+    // 標準化日期解析：解決 Excel 轉換、物件或格式差異
     function formatDateCell(val) {
         if (val === null || val === undefined) return "";
         
-        // 狀況 1: 原生 JS Date 物件
         if (val instanceof Date) {
             if (isNaN(val.getTime())) return "";
             let y = val.getFullYear();
@@ -237,7 +239,6 @@
         let str = val.toString().trim().replace(/[\r\n]+/g, ' ');
         if (!str) return "";
 
-        // 狀況 2: 符合 YYYY/MM/DD 或 YYYY-MM-DD 格式
         let match = str.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
         if (match) {
             let y = match[1];
@@ -246,7 +247,6 @@
             return `${y}-${m}-${d}`;
         }
 
-        // 狀況 3: 其他標準日期字串
         let dObj = new Date(str);
         if (!isNaN(dObj.getTime())) {
             let y = dObj.getFullYear();
@@ -255,7 +255,7 @@
             return `${y}-${m}-${d}`;
         }
 
-        return str;
+        return "";
     }
 
     function getDayOfWeek(dateStr) {
@@ -266,11 +266,6 @@
             return dateObj.getDay();
         }
         return -1;
-    }
-
-    function sanitizeStr(val) {
-        if (val === null || val === undefined) return "";
-        return val.toString().trim().replace(/[\r\n]+/g, ' ');
     }
 
     function sortStudents() {
@@ -333,6 +328,7 @@
         }
     }
 
+    // 全動態 Excel 解析邏輯
     excelFileInput.addEventListener('change', (e) => {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
@@ -351,63 +347,108 @@
                     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
                     const aoa = XLSX.utils.sheet_to_json(worksheet, {header: 1, raw: false, dateNF: 'yyyy-mm-dd'});
 
-                    if (index === 0) {
-                        primaryActivityName = (aoa[2] && aoa[2][0]) ? sanitizeStr(aoa[2][0]) : "訓練活動";
+                    // 1. 動態尋找包含「姓名」或「人名」的表頭列
+                    let headerRowIdx = -1;
+                    let nameCol = -1, classCol = -1, idCol = -1, walkCol = -1, parentCol = -1;
+
+                    for (let r = 0; r < aoa.length; r++) {
+                        if (!aoa[r]) continue;
+                        for (let c = 0; c < aoa[r].length; c++) {
+                            let text = sanitizeStr(aoa[r][c]);
+                            if (text.includes("姓名") || text.includes("人名")) {
+                                headerRowIdx = r;
+                                nameCol = c;
+                                break;
+                            }
+                        }
+                        if (headerRowIdx !== -1) break;
                     }
 
-                    // 1. 解析日期 (透過 formatDateCell 自動格式化)
-                    const dateRow = aoa[3] || [];
-                    let fileDates = [];
-                    for (let col = 8; col < dateRow.length; col++) {
-                        const dVal = formatDateCell(dateRow[col]);
+                    if (headerRowIdx === -1) {
+                        alert("匯入失敗：無法在 Excel 找到包含「學生姓名」的表頭列。");
+                        resolve();
+                        return;
+                    }
+
+                    let headerRow = aoa[headerRowIdx];
+
+                    // 2. 定義各功能欄位索引
+                    for (let c = 0; c < headerRow.length; c++) {
+                        let text = sanitizeStr(headerRow[c]);
+                        if (text.includes("班")) classCol = c;
+                        else if (text.includes("學號") || text.includes("號")) idCol = c;
+                        else if (text.includes("先行")) walkCol = c;
+                        else if (text.includes("家長")) parentCol = c;
+                    }
+
+                    // 3. 動態追蹤所有「訓練日期」欄位
+                    let dateCols = [];
+                    for (let c = 0; c < headerRow.length; c++) {
+                        if (c === nameCol || c === classCol || c === idCol || c === walkCol || c === parentCol) continue;
+                        
+                        let dVal = formatDateCell(headerRow[c]);
                         if (dVal !== "") {
                             allDatesSet.add(dVal);
-                            fileDates[col] = dVal;
+                            dateCols.push({ colIdx: c, dateStr: dVal });
                         }
                     }
 
-                    // 2. 解析學生資料 (使用「班別_學號_姓名」作為 Unique Key 避免覆蓋同名學生)
-                    for (let r = 4; r < aoa.length; r++) {
-                        if (aoa[r] && aoa[r][3]) {
-                            const sClass = sanitizeStr(aoa[r][1]);
-                            const sId = sanitizeStr(aoa[r][2]);
-                            const sName = sanitizeStr(aoa[r][3]);
-
-                            if (sName !== "") {
-                                const sKey = `${sClass}_${sId}_${sName}`;
-                                const valWalk = sanitizeStr(aoa[r][5]);
-                                const valParent = sanitizeStr(aoa[r][6]);
-
-                                let dismissType = "未註明";
-                                const isWalk = valWalk !== "" && valWalk !== "0";
-                                const isParent = valParent !== "" && valParent !== "0";
-
-                                if (isWalk && isParent) dismissType = "先行/家長";
-                                else if (isWalk) dismissType = "先行";
-                                else if (isParent) dismissType = "家長";
-
-                                if (!studentMap.has(sKey)) {
-                                    studentMap.set(sKey, {
-                                        key: sKey,
-                                        class: sClass,
-                                        studentId: sId,
-                                        name: sName,
-                                        dismissMethod: dismissType,
-                                        hasWalk: isWalk,
-                                        hasParent: isParent,
-                                        fixedAbsentDays: []
-                                    });
-                                }
-
-                                for (let col = 8; col < dateRow.length; col++) {
-                                    const dVal = fileDates[col];
-                                    if (dVal) {
-                                        const statusVal = sanitizeStr(aoa[r][col]) || "出席";
-                                        importedAttendance[`${dVal}_${sKey}`] = statusVal;
+                    // 4. 動態尋找活動名稱 (在表頭列之前的非空儲存格)
+                    if (index === 0) {
+                        for (let r = 0; r < headerRowIdx; r++) {
+                            if (aoa[r]) {
+                                for (let c = 0; c < aoa[r].length; c++) {
+                                    let text = sanitizeStr(aoa[r][c]);
+                                    if (text && !text.includes("班別") && !text.includes("學號")) {
+                                        primaryActivityName = text;
+                                        break;
                                     }
                                 }
                             }
+                            if (primaryActivityName) break;
                         }
+                        if (!primaryActivityName) primaryActivityName = "訓練活動";
+                    }
+
+                    // 5. 讀取學生資料與點名矩陣 (全動態索引)
+                    for (let r = headerRowIdx + 1; r < aoa.length; r++) {
+                        if (!aoa[r] || nameCol >= aoa[r].length) continue;
+
+                        let sName = sanitizeStr(aoa[r][nameCol]);
+                        if (!sName) continue;
+
+                        let sClass = classCol !== -1 && classCol < aoa[r].length ? sanitizeStr(aoa[r][classCol]) : "";
+                        let sId = idCol !== -1 && idCol < aoa[r].length ? sanitizeStr(aoa[r][idCol]) : "";
+                        let sKey = `${sClass}_${sId}_${sName}`;
+
+                        let valWalk = walkCol !== -1 && walkCol < aoa[r].length ? sanitizeStr(aoa[r][walkCol]) : "";
+                        let valParent = parentCol !== -1 && parentCol < aoa[r].length ? sanitizeStr(aoa[r][parentCol]) : "";
+
+                        let isWalk = valWalk !== "" && valWalk !== "0";
+                        let isParent = valParent !== "" && valParent !== "0";
+                        let dismissType = "未註明";
+                        if (isWalk && isParent) dismissType = "先行/家長";
+                        else if (isWalk) dismissType = "先行";
+                        else if (isParent) dismissType = "家長";
+
+                        if (!studentMap.has(sKey)) {
+                            studentMap.set(sKey, {
+                                key: sKey,
+                                class: sClass,
+                                studentId: sId,
+                                name: sName,
+                                dismissMethod: dismissType,
+                                hasWalk: isWalk,
+                                hasParent: isParent,
+                                fixedAbsentDays: []
+                            });
+                        }
+
+                        dateCols.forEach(dObj => {
+                            let statusVal = dObj.colIdx < aoa[r].length ? sanitizeStr(aoa[r][dObj.colIdx]) : "";
+                            if (!statusVal) statusVal = "出席";
+                            importedAttendance[`${dObj.dateStr}_${sKey}`] = statusVal;
+                        });
                     }
                     resolve();
                 };
@@ -757,7 +798,7 @@
         }
     });
 
-    // 匯出原格式 Excel (使用原始矩陣填寫，維持與原始檔完全相同的格式)
+    // 匯出原格式 Excel 矩陣
     document.getElementById('exportBtn').addEventListener('click', () => {
         let aoaData = [];
 
