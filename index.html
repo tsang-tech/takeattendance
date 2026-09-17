@@ -3,131 +3,139 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能點名系統</title>
-    <!-- 引入 SheetJS 函式庫來處理 Excel -->
+    <title>每日互動點名系統</title>
+    <!-- 引入 SheetJS 處理 Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; background-color: #f9f9f9; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        h1 { color: #333; text-align: center; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 950px; margin: 0 auto; background-color: #f4f6f9; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        h1 { color: #2c3e50; text-align: center; margin-top: 0; }
         .control-group { margin-bottom: 15px; }
-        label { font-weight: bold; display: block; margin-bottom: 5px; }
-        select, input[type="file"], button { padding: 8px; width: 100%; box-sizing: border-box; margin-bottom: 10px; font-size: 16px; }
-        button { background-color: #0366d6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; padding: 12px; }
-        button:hover { background-color: #024ea4; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-        th { background-color: #f2f2f2; white-space: nowrap; }
-        .absent { color: red; font-weight: bold; }
-        .tips { color: #666; font-size: 13px; line-height: 1.5; background: #eef5ff; padding: 10px; border-radius: 5px; margin-top: 5px;}
+        label { font-weight: bold; display: block; margin-bottom: 6px; color: #34495e; }
+        select, input[type="file"], button { padding: 10px; width: 100%; box-sizing: border-box; margin-bottom: 10px; font-size: 15px; border-radius: 5px; border: 1px solid #ccc; }
+        
+        .date-bar { display: flex; gap: 10px; align-items: center; background: #eef5ff; padding: 12px; border-radius: 6px; margin-bottom: 15px; }
+        .date-bar select { margin-bottom: 0; font-weight: bold; color: #0366d6; flex: 1; }
+        
+        .quick-actions { display: flex; gap: 10px; margin-bottom: 15px; }
+        .quick-actions button { margin-bottom: 0; cursor: pointer; font-size: 13px; font-weight: bold; border: none; color: white; }
+        .btn-all-present { background-color: #28a745; }
+        .btn-apply-rule { background-color: #17a2b8; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; background: white; }
+        th, td { border: 1px solid #e0e0e0; padding: 10px; text-align: center; }
+        th { background-color: #f8f9fa; color: #495057; }
+        
+        /* 狀態按鈕組 */
+        .status-btn-group { display: inline-flex; gap: 4px; }
+        .status-btn { padding: 6px 12px; border: 1px solid #ccc; background: #fff; cursor: pointer; border-radius: 4px; font-size: 13px; margin-bottom: 0; width: auto; }
+        .status-btn.active-present { background-color: #28a745; color: white; border-color: #28a745; font-weight: bold; }
+        .status-btn.active-absent { background-color: #dc3545; color: white; border-color: #dc3545; font-weight: bold; }
+        .status-btn.active-leave { background-color: #ffc107; color: #212529; border-color: #ffc107; font-weight: bold; }
+        .status-btn.active-late { background-color: #17a2b8; color: white; border-color: #17a2b8; font-weight: bold; }
+
+        .summary-info { font-size: 14px; color: #666; margin-bottom: 10px; display: flex; justify-content: space-between; }
+        .export-btn { background-color: #28a745; color: white; font-weight: bold; border: none; font-size: 16px; margin-top: 15px; cursor: pointer; }
+        .export-btn:hover { background-color: #218838; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h1>📝 智能點名系統</h1>
+    <h1>📝 每日互動點名系統</h1>
     
     <div class="control-group">
-        <label for="excelFile">1. 匯入 Excel 檔案：</label>
+        <label for="excelFile">1. 匯入 Excel 點名紙：</label>
         <input type="file" id="excelFile" accept=".xlsx, .xls">
-        <div class="tips">
-            <strong>系統讀取規則：</strong><br>
-            📌 學生資訊：從第 5 列開始讀取 <b>班別 (B欄)</b>、<b>學號 (C欄)</b>、<b>學生姓名 (D欄)</b><br>
-            📌 訓練日期：自動讀取第 4 列的 <b>I4 至 CD4</b><br>
-            📌 活動名稱：固定讀取 <b>A3</b> 儲存格
+    </div>
+
+    <!-- 點名工作區 (讀取檔案後顯示) -->
+    <div id="appWorkspace" style="display: none;">
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+        
+        <div class="control-group">
+            <label>2. 選擇訓練日期進行點名：</label>
+            <div class="date-bar">
+                <select id="dateSelect"></select>
+                <span id="weekdayTag" style="font-weight: bold; color: #555; min-width: 70px;"></span>
+            </div>
         </div>
-    </div>
 
-    <div class="control-group">
-        <label for="absentDay">2. 設定固定缺席日：</label>
-        <select id="absentDay">
-            <option value="-1">無特定缺席日</option>
-            <option value="1">逢星期一缺席</option>
-            <option value="2">逢星期二缺席</option>
-            <option value="3">逢星期三缺席</option>
-            <option value="4">逢星期四缺席</option>
-            <option value="5">逢星期五缺席</option>
-            <option value="6">逢星期六缺席</option>
-            <option value="0">逢星期日缺席</option>
-        </select>
-    </div>
+        <div class="control-group">
+            <label>快速設定：</label>
+            <div class="quick-actions">
+                <button class="btn-all-present" id="btnAllPresent">全日預設為「出席」</button>
+                <button class="btn-apply-rule" id="btnApplyRule">按星期幾自動標記「缺席」</button>
+            </div>
+        </div>
 
-    <button id="processBtn" disabled>3. 處理並預覽資料</button>
-    <button id="exportBtn" style="display: none; background-color: #28a745; margin-top: 10px;">4. 匯出結果 (Excel)</button>
-</div>
+        <div class="summary-info">
+            <span>訓練項目：<strong id="activityDisplay" style="color:#0366d6;">-</strong></span>
+            <span>總人數：<strong id="studentCount">0</strong> 人</span>
+        </div>
 
-<div id="previewContainer" class="card" style="display: none;">
-    <h3>預覽結果</h3>
-    <div style="overflow-x: auto;">
-        <table id="previewTable">
-            <thead>
-                <tr>
-                    <th>班別</th>
-                    <th>學號</th>
-                    <th>學生姓名</th>
-                    <th>訓練項目</th>
-                    <th>訓練日期</th>
-                    <th>星期</th>
-                    <th>狀態</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>班別</th>
+                        <th>學號</th>
+                        <th>學生姓名</th>
+                        <th>點名狀態</th>
+                    </tr>
+                </thead>
+                <tbody id="studentTableBody"></tbody>
+            </table>
+        </div>
+
+        <button class="export-btn" id="exportBtn">匯出完整點名結果 (Excel)</button>
     </div>
 </div>
 
 <script>
-    let processedData = []; 
-    const excelFileInput = document.getElementById('excelFile');
-    const processBtn = document.getElementById('processBtn');
-    const exportBtn = document.getElementById('exportBtn');
-    const tbody = document.querySelector('#previewTable tbody');
-    const previewContainer = document.getElementById('previewContainer');
+    let rawStudents = [];     // 學生名單 [{class, studentId, name}]
+    let dateList = [];        // 日期清單 ["2026-09-01", ...]
+    let activityName = "";    // 活動名稱
+    let attendanceMap = {};   // 記錄所有人日常點名: { "日期_姓名": "出席" | "缺席" | "請假" | "遲到" }
 
     const weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
 
-    // 當選擇檔案後解鎖處理按鈕
-    excelFileInput.addEventListener('change', (e) => {
-        if(e.target.files.length > 0) processBtn.disabled = false;
-    });
+    const excelFileInput = document.getElementById('excelFile');
+    const appWorkspace = document.getElementById('appWorkspace');
+    const dateSelect = document.getElementById('dateSelect');
+    const weekdayTag = document.getElementById('weekdayTag');
+    const studentTableBody = document.getElementById('studentTableBody');
+    const activityDisplay = document.getElementById('activityDisplay');
+    const studentCount = document.getElementById('studentCount');
 
-    // 處理 Excel 資料
-    processBtn.addEventListener('click', () => {
-        const file = excelFileInput.files[0];
-        const absentDayValue = parseInt(document.getElementById('absentDay').value);
-        
+    // 匯入 Excel 檔案
+    excelFileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
         const reader = new FileReader();
-        reader.onload = (e) => {
-            const data = new Uint8Array(e.target.result);
+        reader.onload = (evt) => {
+            const data = new Uint8Array(evt.target.result);
             const workbook = XLSX.read(data, {type: 'array', cellDates: true});
             const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-            
-            // 以二維陣列 (header: 1) 讀取
             const aoa = XLSX.utils.sheet_to_json(worksheet, {header: 1, raw: false, dateNF: 'yyyy-mm-dd'});
-            
-            processedData = [];
-            tbody.innerHTML = ''; 
 
-            // 1. 抽取活動名稱 (A3 -> 陣列索引 [2][0])
-            const activityName = (aoa[2] && aoa[2][0]) ? aoa[2][0] : "未命名訓練";
+            // 1. 活動名稱 (A3)
+            activityName = (aoa[2] && aoa[2][0]) ? aoa[2][0] : "訓練活動";
+            activityDisplay.textContent = activityName;
 
-            // 2. 抽取訓練日期 (I4 到 CD4 -> 陣列索引 [3])
-            // I 欄的索引是 8
-            let dateList = [];
+            // 2. 訓練日期 (I4 至 CD4)
+            dateList = [];
             const dateRow = aoa[3] || [];
             for (let col = 8; col < dateRow.length; col++) {
-                if (dateRow[col]) {
-                    dateList.push(dateRow[col]);
-                }
+                if (dateRow[col]) dateList.push(dateRow[col]);
             }
 
-            // 3. 抽取學生資訊：班別(B欄->[1])、學號(C欄->[2])、姓名(D欄->[3])
-            let studentList = [];
+            // 3. 學生名單 (B5:班別, C5:學號, D5:姓名)
+            rawStudents = [];
             for (let r = 4; r < aoa.length; r++) {
-                // 只有當「學生姓名 (D欄)」有資料時，才視為有效資料
-                if (aoa[r] && aoa[r][3]) { 
-                    studentList.push({
+                if (aoa[r] && aoa[r][3]) {
+                    rawStudents.push({
                         class: aoa[r][1] || "",
                         studentId: aoa[r][2] || "",
                         name: aoa[r][3]
@@ -135,59 +143,134 @@
                 }
             }
 
-            // 4. 交叉比對：為每位學生產生所有日期的點名紀錄
-            studentList.forEach(student => {
-                dateList.forEach(dateStr => {
-                    let dayOfWeek = -1;
-                    let weekdayStr = "";
-                    
-                    const dateObj = new Date(dateStr);
-                    if (!isNaN(dateObj)) {
-                        dayOfWeek = dateObj.getDay();
-                        weekdayStr = weekdays[dayOfWeek];
-                    }
+            studentCount.textContent = rawStudents.length;
 
-                    let status = (dayOfWeek === absentDayValue) ? "缺席" : "出席";
-
-                    // 建立新的資料列，包含班別、學號、姓名
-                    const newRow = {
-                        "班別": student.class,
-                        "學號": student.studentId,
-                        "學生姓名": student.name,
-                        "訓練項目": activityName,
-                        "訓練日期": dateStr,
-                        "狀態": status
-                    };
-                    processedData.push(newRow);
-
-                    // 更新 HTML 預覽表格
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td>${newRow['班別']}</td>
-                        <td>${newRow['學號']}</td>
-                        <td>${newRow['學生姓名']}</td>
-                        <td>${newRow['訓練項目']}</td>
-                        <td>${newRow['訓練日期']}</td>
-                        <td>${weekdayStr}</td>
-                        <td class="${status === '缺席' ? 'absent' : ''}">${status}</td>
-                    `;
-                    tbody.appendChild(tr);
+            // 初始化所有日期的預設狀態為「出席」
+            attendanceMap = {};
+            dateList.forEach(d => {
+                rawStudents.forEach(s => {
+                    attendanceMap[`${d}_${s.name}`] = "出席";
                 });
             });
 
-            previewContainer.style.display = 'block';
-            exportBtn.style.display = 'block';
+            // 渲染日期下拉選單
+            dateSelect.innerHTML = "";
+            dateList.forEach((d, idx) => {
+                const opt = document.createElement('option');
+                opt.value = d;
+                const dObj = new Date(d);
+                const wStr = !isNaN(dObj) ? weekdays[dObj.getDay()] : "";
+                opt.textContent = `第 ${idx + 1} 節：${d} (${wStr})`;
+                dateSelect.appendChild(opt);
+            });
+
+            appWorkspace.style.display = 'block';
+            renderRollCallTable();
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // 匯出 Excel
-    exportBtn.addEventListener('click', () => {
-        const worksheet = XLSX.utils.json_to_sheet(processedData);
-        const newWorkbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(newWorkbook, worksheet, "點名結果");
+    // 日期切換事件
+    dateSelect.addEventListener('change', renderRollCallTable);
+
+    // 渲染特定日期的點名表格
+    function renderRollCallTable() {
+        const selectedDate = dateSelect.value;
+        if (!selectedDate) return;
+
+        const dObj = new Date(selectedDate);
+        if (!isNaN(dObj)) {
+            weekdayTag.textContent = weekdays[dObj.getDay()];
+        }
+
+        studentTableBody.innerHTML = "";
+
+        rawStudents.forEach(student => {
+            const currentStatus = attendanceMap[`${selectedDate}_${student.name}`] || "出席";
+            const tr = document.createElement('tr');
+            
+            tr.innerHTML = `
+                <td>${student.class}</td>
+                <td>${student.studentId}</td>
+                <td><strong>${student.name}</strong></td>
+                <td>
+                    <div class="status-btn-group">
+                        <button class="status-btn ${currentStatus === '出席' ? 'active-present' : ''}" onclick="setStatus('${selectedDate}', '${student.name}', '出席')">出席</button>
+                        <button class="status-btn ${currentStatus === '缺席' ? 'active-absent' : ''}" onclick="setStatus('${selectedDate}', '${student.name}', '缺席')">缺席</button>
+                        <button class="status-btn ${currentStatus === '請假' ? 'active-leave' : ''}" onclick="setStatus('${selectedDate}', '${student.name}', '請假')">請假</button>
+                        <button class="status-btn ${currentStatus === '遲到' ? 'active-late' : ''}" onclick="setStatus('${selectedDate}', '${student.name}', '遲到')">遲到</button>
+                    </div>
+                </td>
+            `;
+            studentTableBody.appendChild(tr);
+        });
+    }
+
+    // 修改特定學生點名狀態
+    window.setStatus = function(date, studentName, status) {
+        attendanceMap[`${date}_${studentName}`] = status;
+        renderRollCallTable();
+    };
+
+    // 快速功能：全日設為出席
+    document.getElementById('btnAllPresent').addEventListener('click', () => {
+        const selectedDate = dateSelect.value;
+        rawStudents.forEach(s => {
+            attendanceMap[`${selectedDate}_${s.name}`] = "出席";
+        });
+        renderRollCallTable();
+    });
+
+    // 快速功能：逢星期幾設定缺席
+    document.getElementById('btnApplyRule').addEventListener('click', () => {
+        const dayInput = prompt("請輸入固定缺席的星期幾數字：\n1 = 星期一\n2 = 星期二\n3 = 星期三\n4 = 星期四\n5 = 星期五\n6 = 星期六\n0 = 星期日");
+        if (dayInput === null) return;
         
-        XLSX.writeFile(newWorkbook, "點名結果_" + new Date().getTime() + ".xlsx");
+        const targetDay = parseInt(dayInput);
+        if (isNaN(targetDay) || targetDay < 0 || targetDay > 6) {
+            alert("請輸入有效的數字 (0 至 6)");
+            return;
+        }
+
+        dateList.forEach(d => {
+            const dObj = new Date(d);
+            if (!isNaN(dObj) && dObj.getDay() === targetDay) {
+                rawStudents.forEach(s => {
+                    attendanceMap[`${d}_${s.name}`] = "缺席";
+                });
+            }
+        });
+
+        alert(`已完成將所有 ${weekdays[targetDay]} 設定為缺席！`);
+        renderRollCallTable();
+    });
+
+    // 匯出完整 Excel 檔案
+    document.getElementById('exportBtn').addEventListener('click', () => {
+        let exportData = [];
+
+        rawStudents.forEach(student => {
+            dateList.forEach(d => {
+                const dObj = new Date(d);
+                const wStr = !isNaN(dObj) ? weekdays[dObj.getDay()] : "";
+                
+                exportData.push({
+                    "班別": student.class,
+                    "學號": student.studentId,
+                    "學生姓名": student.name,
+                    "訓練項目": activityName,
+                    "訓練日期": d,
+                    "星期": wStr,
+                    "狀態": attendanceMap[`${d}_${student.name}`] || "出席"
+                });
+            });
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        const newWorkbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(newWorkbook, worksheet, "點名總表");
+        
+        XLSX.writeFile(newWorkbook, `${activityName}_點名紀錄_${new Date().getTime()}.xlsx`);
     });
 </script>
 
