@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能點名系統</title>
+    <!-- 引入 SheetJS 函式庫來處理 Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; background-color: #f9f9f9; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h1 { color: #333; text-align: center; }
+        .control-group { margin-bottom: 15px; }
+        label { font-weight: bold; display: block; margin-bottom: 5px; }
+        select, input[type="file"], button { padding: 8px; width: 100%; box-sizing: border-box; margin-bottom: 10px; font-size: 16px; }
+        button { background-color: #0366d6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #024ea4; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        th { background-color: #f2f2f2; }
+        .absent { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>📝 智能點名系統</h1>
+    
+    <div class="control-group">
+        <label for="excelFile">1. 匯入 Excel 檔案：</label>
+        <input type="file" id="excelFile" accept=".xlsx, .xls">
+        <small style="color: #666;">* 確保 Excel 內包含「訓練項目」、「人名」、「訓練日期」欄位</small>
+    </div>
+
+    <div class="control-group">
+        <label for="absentDay">2. 設定固定缺席日：</label>
+        <select id="absentDay">
+            <option value="-1">無特定缺席日</option>
+            <option value="1">逢星期一缺席</option>
+            <option value="2">逢星期二缺席</option>
+            <option value="3">逢星期三缺席</option>
+            <option value="4">逢星期四缺席</option>
+            <option value="5">逢星期五缺席</option>
+            <option value="6">逢星期六缺席</option>
+            <option value="0">逢星期日缺席</option>
+        </select>
+    </div>
+
+    <button id="processBtn" disabled>3. 處理並預覽資料</button>
+    <button id="exportBtn" style="display: none; background-color: #28a745;">4. 匯出結果 (Excel)</button>
+</div>
+
+<div id="previewContainer" class="card" style="display: none;">
+    <h3>預覽結果</h3>
+    <div style="overflow-x: auto;">
+        <table id="previewTable">
+            <thead>
+                <tr>
+                    <th>訓練項目</th>
+                    <th>人名</th>
+                    <th>訓練日期</th>
+                    <th>星期</th>
+                    <th>狀態</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    let processedData = []; // 儲存處理後的資料
+    const excelFileInput = document.getElementById('excelFile');
+    const processBtn = document.getElementById('processBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const tbody = document.querySelector('#previewTable tbody');
+    const previewContainer = document.getElementById('previewContainer');
+
+    const weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+
+    // 當選擇檔案後解鎖處理按鈕
+    excelFileInput.addEventListener('change', (e) => {
+        if(e.target.files.length > 0) processBtn.disabled = false;
+    });
+
+    // 處理 Excel 資料
+    processBtn.addEventListener('click', () => {
+        const file = excelFileInput.files[0];
+        const absentDayValue = parseInt(document.getElementById('absentDay').value);
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+            
+            // 讀取第一個工作表
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            
+            // 將 Excel 轉換為 JSON 陣列
+            let jsonData = XLSX.utils.sheet_to_json(worksheet, {raw: false, dateNF: 'yyyy-mm-dd'});
+            
+            processedData = [];
+            tbody.innerHTML = ''; // 清空預覽表
+
+            jsonData.forEach(row => {
+                // 嘗試抓取日期
+                const dateStr = row['訓練日期'];
+                let dayOfWeek = -1;
+                let weekdayStr = "";
+                
+                if (dateStr) {
+                    const dateObj = new Date(dateStr);
+                    if (!isNaN(dateObj)) {
+                        dayOfWeek = dateObj.getDay(); // 0(日) 到 6(六)
+                        weekdayStr = weekdays[dayOfWeek];
+                    }
+                }
+
+                // 判斷狀態
+                let status = "出席";
+                if (dayOfWeek === absentDayValue) {
+                    status = "缺席";
+                }
+
+                // 建立新資料物件
+                const newRow = {
+                    "訓練項目": row['訓練項目'] || "",
+                    "人名": row['人名'] || "",
+                    "訓練日期": dateStr || "",
+                    "狀態": status
+                };
+                processedData.push(newRow);
+
+                // 更新 HTML 預覽表格
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${newRow['訓練項目']}</td>
+                    <td>${newRow['人名']}</td>
+                    <td>${newRow['訓練日期']}</td>
+                    <td>${weekdayStr}</td>
+                    <td class="${status === '缺席' ? 'absent' : ''}">${status}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            previewContainer.style.display = 'block';
+            exportBtn.style.display = 'block';
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    // 匯出 Excel
+    exportBtn.addEventListener('click', () => {
+        // 建立新的工作表與活頁簿
+        const worksheet = XLSX.utils.json_to_sheet(processedData);
+        const newWorkbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(newWorkbook, worksheet, "點名結果");
+        
+        // 觸發下載
+        XLSX.writeFile(newWorkbook, "點名結果_" + new Date().getTime() + ".xlsx");
+    });
+</script>
+
+</body>
+</html>
