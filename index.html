@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能點名系統 (按鈕修復與安全事件處理版)</title>
+    <title>智能點名系統 (邏輯修復版)</title>
     <!-- 引入 SheetJS 處理 Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
@@ -52,7 +52,7 @@
         <label for="excelFile">1. 匯入 Excel 點名紙：</label>
         <input type="file" id="excelFile" accept=".xlsx, .xls" multiple>
         <div class="tips">
-            ✅ <b>按鈕相容性優化：</b> 已採用安全事件監聽，支援直接點擊切換點名狀態與多選固定缺席日。
+            🔧 <b>修復完成：</b> 點擊個人固定缺席日（一至日）時，僅會針對屬於該星期的訓練日更新點名狀態。
         </div>
     </div>
 
@@ -112,7 +112,7 @@
         { num: 0, label: "日" }
     ];
 
-    const LOCAL_STORAGE_KEY = "SMART_ROLLCALL_DATA_V4";
+    const LOCAL_STORAGE_KEY = "SMART_ROLLCALL_DATA_V5";
 
     const excelFileInput = document.getElementById('excelFile');
     const appWorkspace = document.getElementById('appWorkspace');
@@ -125,7 +125,17 @@
 
     window.addEventListener('DOMContentLoaded', loadDataFromStorage);
 
-    // 安全清理字串
+    // 安全解析日期字串（防止跨時區日期偏差）
+    function getDayOfWeek(dateStr) {
+        if (!dateStr) return -1;
+        const parts = dateStr.replace(/\//g, '-').split('-').map(p => parseInt(p, 10));
+        if (parts.length === 3 && !parts.some(isNaN)) {
+            const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+            return dateObj.getDay();
+        }
+        return -1;
+    }
+
     function sanitizeStr(val) {
         if (val === null || val === undefined) return "";
         return val.toString().trim().replace(/[\r\n]+/g, ' ');
@@ -163,8 +173,8 @@
                 dateList.forEach((d, idx) => {
                     const opt = document.createElement('option');
                     opt.value = d;
-                    const dObj = new Date(d);
-                    const wStr = !isNaN(dObj) ? weekdays[dObj.getDay()] : "";
+                    const wNum = getDayOfWeek(d);
+                    const wStr = wNum !== -1 ? weekdays[wNum] : "";
                     opt.textContent = `第 ${idx + 1} 節：${d} (${wStr})`;
                     dateSelect.appendChild(opt);
                 });
@@ -260,8 +270,8 @@
             dateList.forEach((d, idx) => {
                 const opt = document.createElement('option');
                 opt.value = d;
-                const dObj = new Date(d);
-                const wStr = !isNaN(dObj) ? weekdays[dObj.getDay()] : "";
+                const wNum = getDayOfWeek(d);
+                const wStr = wNum !== -1 ? weekdays[wNum] : "";
                 opt.textContent = `第 ${idx + 1} 節：${d} (${wStr})`;
                 dateSelect.appendChild(opt);
             });
@@ -277,7 +287,7 @@
         autoSave();
     });
 
-    // 表格按鈕事件委派監聽 (避免字串轉義導致的點擊無效)
+    // 表格按鈕點擊委派監聽
     studentTableBody.addEventListener('click', (e) => {
         const btn = e.target.closest('button');
         if (!btn) return;
@@ -294,7 +304,7 @@
                 autoSave();
             }
         } else if (action === 'toggle-fixed-day') {
-            const dayNum = parseInt(btn.dataset.dayNum);
+            const dayNum = parseInt(btn.dataset.dayNum, 10);
             if (studentName && !isNaN(dayNum)) {
                 toggleStudentFixedAbsent(studentName, dayNum);
             }
@@ -305,9 +315,9 @@
         const selectedDate = dateSelect.value;
         if (!selectedDate) return;
 
-        const dObj = new Date(selectedDate);
-        if (!isNaN(dObj)) {
-            weekdayTag.textContent = weekdays[dObj.getDay()];
+        const wNum = getDayOfWeek(selectedDate);
+        if (wNum !== -1) {
+            weekdayTag.textContent = weekdays[wNum];
         }
 
         studentTableBody.innerHTML = "";
@@ -382,6 +392,7 @@
         });
     }
 
+    // 精準切換固定缺席日
     function toggleStudentFixedAbsent(studentName, dayNum) {
         const student = rawStudents.find(s => s.name === studentName);
         if (!student) return;
@@ -391,21 +402,21 @@
         }
 
         const idx = student.fixedAbsentDays.indexOf(dayNum);
+        let isNowAdded = false;
+
         if (idx > -1) {
-            student.fixedAbsentDays.splice(idx, 1);
+            student.fixedAbsentDays.splice(idx, 1); // 取消此星期的固定缺席
+            isNowAdded = false;
         } else {
-            student.fixedAbsentDays.push(dayNum);
+            student.fixedAbsentDays.push(dayNum); // 設定此星期的固定缺席
+            isNowAdded = true;
         }
 
+        // 【精準修改】：只更新屬於該星期幾 (dayNum) 的訓練日，絕不影響其他星期的日期狀態！
         dateList.forEach(d => {
-            const dObj = new Date(d);
-            if (!isNaN(dObj)) {
-                const wDay = dObj.getDay();
-                if (student.fixedAbsentDays.includes(wDay)) {
-                    attendanceMap[`${d}_${studentName}`] = "缺席";
-                } else if (attendanceMap[`${d}_${studentName}`] === "缺席") {
-                    attendanceMap[`${d}_${studentName}`] = "出席";
-                }
+            const wDay = getDayOfWeek(d);
+            if (wDay === dayNum) {
+                attendanceMap[`${d}_${studentName}`] = isNowAdded ? "缺席" : "出席";
             }
         });
 
