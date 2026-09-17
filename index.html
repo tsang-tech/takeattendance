@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能點名系統 (即時自動儲存版)</title>
+    <title>智能點名系統 (原排版相容版)</title>
     <!-- 引入 SheetJS 處理 Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
@@ -46,10 +46,10 @@
     <h1>📝 智能點名系統</h1>
     
     <div class="control-group" id="uploadSection">
-        <label for="excelFile">1. 匯入 Excel 點名紙 (可按住 Ctrl 同時選取多個檔案)：</label>
+        <label for="excelFile">1. 匯入 Excel 點名紙：</label>
         <input type="file" id="excelFile" accept=".xlsx, .xls" multiple>
         <div class="tips">
-            💾 <b>即時自動儲存功能已啟用：</b> 任何點名修改都會自動儲存在此瀏覽器，重開網頁進度不會遺失。
+            🔄 <b>原生格式雙向相容：</b> 匯出的 Excel 將維持與原始點名紙完全相同的表格格式，方便於其他平台跨平台點名或二次匯入。
         </div>
     </div>
 
@@ -88,7 +88,7 @@
             </table>
         </div>
 
-        <button class="export-btn" id="exportBtn">匯出完整點名結果 (Excel)</button>
+        <button class="export-btn" id="exportBtn">匯出原格式 Excel 點名紙</button>
     </div>
 </div>
 
@@ -99,7 +99,7 @@
     let attendanceMap = {};   // 點名紀錄 map
 
     const weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
-    const LOCAL_STORAGE_KEY = "SMART_ROLLCALL_DATA";
+    const LOCAL_STORAGE_KEY = "SMART_ROLLCALL_DATA_V2";
 
     const excelFileInput = document.getElementById('excelFile');
     const appWorkspace = document.getElementById('appWorkspace');
@@ -110,12 +110,8 @@
     const studentCount = document.getElementById('studentCount');
     const saveStatus = document.getElementById('saveStatus');
 
-    // 頁面載入時檢查是否有舊紀錄
-    window.addEventListener('DOMContentLoaded', () => {
-        loadDataFromStorage();
-    });
+    window.addEventListener('DOMContentLoaded', loadDataFromStorage);
 
-    // 儲存至 LocalStorage
     function autoSave() {
         const storeObj = {
             rawStudents,
@@ -125,13 +121,10 @@
             selectedDate: dateSelect.value
         };
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(storeObj));
-        
-        // 顯示已儲存提示
         saveStatus.style.display = "inline";
         setTimeout(() => { saveStatus.style.display = "none"; }, 1500);
     }
 
-    // 從 LocalStorage 載入資料
     function loadDataFromStorage() {
         const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (!saved) return;
@@ -147,7 +140,6 @@
                 activityDisplay.textContent = activityName;
                 studentCount.textContent = rawStudents.length;
 
-                // 重新渲染日期選單
                 dateSelect.innerHTML = "";
                 dateList.forEach((d, idx) => {
                     const opt = document.createElement('option');
@@ -158,9 +150,7 @@
                     dateSelect.appendChild(opt);
                 });
 
-                if (data.selectedDate) {
-                    dateSelect.value = data.selectedDate;
-                }
+                if (data.selectedDate) dateSelect.value = data.selectedDate;
 
                 appWorkspace.style.display = 'block';
                 renderRollCallTable();
@@ -170,7 +160,6 @@
         }
     }
 
-    // 讀取 Excel 檔案
     excelFileInput.addEventListener('change', (e) => {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
@@ -178,6 +167,7 @@
         let allDatesSet = new Set();
         let studentMap = new Map();
         let primaryActivityName = "";
+        let importedAttendance = {};
 
         const readPromises = files.map((file, index) => {
             return new Promise((resolve) => {
@@ -192,23 +182,39 @@
                         primaryActivityName = (aoa[2] && aoa[2][0]) ? aoa[2][0] : "訓練活動";
                     }
 
+                    // 1. 抓取日期
                     const dateRow = aoa[3] || [];
+                    let fileDates = [];
                     for (let col = 8; col < dateRow.length; col++) {
                         if (dateRow[col] && dateRow[col].toString().trim() !== "") {
-                            allDatesSet.add(dateRow[col].toString().trim());
+                            const dVal = dateRow[col].toString().trim();
+                            allDatesSet.add(dVal);
+                            fileDates[col] = dVal;
                         }
                     }
 
+                    // 2. 抓取學生及已有點名狀態 (如有)
                     for (let r = 4; r < aoa.length; r++) {
                         if (aoa[r] && aoa[r][3]) {
                             const sName = aoa[r][3].toString().trim();
-                            if (sName && !studentMap.has(sName)) {
-                                studentMap.set(sName, {
-                                    class: aoa[r][1] || "",
-                                    studentId: aoa[r][2] || "",
-                                    name: sName,
-                                    fixedAbsentDay: -1
-                                });
+                            if (sName) {
+                                if (!studentMap.has(sName)) {
+                                    studentMap.set(sName, {
+                                        class: aoa[r][1] || "",
+                                        studentId: aoa[r][2] || "",
+                                        name: sName,
+                                        fixedAbsentDay: -1
+                                    });
+                                }
+
+                                // 讀取現有的點名紀錄
+                                for (let col = 8; col < dateRow.length; col++) {
+                                    const dVal = fileDates[col];
+                                    if (dVal) {
+                                        const statusVal = aoa[r][col] ? aoa[r][col].toString().trim() : "出席";
+                                        importedAttendance[`${dVal}_${sName}`] = statusVal;
+                                    }
+                                }
                             }
                         }
                     }
@@ -226,10 +232,12 @@
             rawStudents = Array.from(studentMap.values());
             studentCount.textContent = rawStudents.length;
 
+            // 整合點名狀態
             attendanceMap = {};
             dateList.forEach(d => {
                 rawStudents.forEach(s => {
-                    attendanceMap[`${d}_${s.name}`] = "出席";
+                    const key = `${d}_${s.name}`;
+                    attendanceMap[key] = importedAttendance[key] || "出席";
                 });
             });
 
@@ -245,7 +253,7 @@
 
             appWorkspace.style.display = 'block';
             renderRollCallTable();
-            autoSave(); // 初次匯入自動存檔
+            autoSave();
         });
     });
 
@@ -254,7 +262,6 @@
         autoSave();
     });
 
-    // 渲染表格
     function renderRollCallTable() {
         const selectedDate = dateSelect.value;
         if (!selectedDate) return;
@@ -299,13 +306,10 @@
         });
     }
 
-    // 更新個人固定缺席日
     window.updateStudentFixedAbsent = function(studentName, absentDayStr) {
         const absentDay = parseInt(absentDayStr);
         const student = rawStudents.find(s => s.name === studentName);
-        if (student) {
-            student.fixedAbsentDay = absentDay;
-        }
+        if (student) student.fixedAbsentDay = absentDay;
 
         dateList.forEach(d => {
             const dObj = new Date(d);
@@ -318,47 +322,50 @@
         autoSave();
     };
 
-    // 手動變更點名狀態
     window.setStatus = function(date, studentName, status) {
         attendanceMap[`${date}_${studentName}`] = status;
         renderRollCallTable();
         autoSave();
     };
 
-    // 清除資料 / 重新匯入
     document.getElementById('resetBtn').addEventListener('click', () => {
-        if (confirm("確定要清除目前儲存的點名紀錄並重新匯入檔案嗎？")) {
+        if (confirm("確定要清除目前的資料並重新匯入檔案嗎？")) {
             localStorage.removeItem(LOCAL_STORAGE_KEY);
             location.reload();
         }
     });
 
-    // 匯出完整 Excel
+    // 匯出原格式 Excel 矩陣
     document.getElementById('exportBtn').addEventListener('click', () => {
-        let exportData = [];
+        let aoaData = [];
 
+        // Row 1 & Row 2
+        aoaData.push([]);
+        aoaData.push([]);
+
+        // Row 3: A3 填寫活動名稱
+        aoaData.push([activityName]);
+
+        // Row 4: 表頭 (B4: 班別, C4: 學號, D4: 學生姓名, I4開始: 訓練日期)
+        let headerRow = ["", "班別", "學號", "學生姓名", "", "", "", ""];
+        dateList.forEach(d => headerRow.push(d));
+        aoaData.push(headerRow);
+
+        // Row 5+: 學生與點名矩陣
         rawStudents.forEach(student => {
+            let row = ["", student.class, student.studentId, student.name, "", "", "", ""];
             dateList.forEach(d => {
-                const dObj = new Date(d);
-                const wStr = !isNaN(dObj) ? weekdays[dObj.getDay()] : "";
-                
-                exportData.push({
-                    "班別": student.class,
-                    "學號": student.studentId,
-                    "學生姓名": student.name,
-                    "訓練項目": activityName,
-                    "訓練日期": d,
-                    "星期": wStr,
-                    "狀態": attendanceMap[`${d}_${student.name}`] || "出席"
-                });
+                let status = attendanceMap[`${d}_${student.name}`] || "出席";
+                row.push(status);
             });
+            aoaData.push(row);
         });
 
-        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        const worksheet = XLSX.utils.aoa_to_sheet(aoaData);
         const newWorkbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(newWorkbook, worksheet, "點名總表");
+        XLSX.utils.book_append_sheet(newWorkbook, worksheet, "點名紙");
         
-        XLSX.writeFile(newWorkbook, `${activityName}_點名紀錄_${new Date().getTime()}.xlsx`);
+        XLSX.writeFile(newWorkbook, `${activityName}_點名紙_${new Date().getTime()}.xlsx`);
     });
 </script>
 
