@@ -3,17 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能點名系統 (含放學方式)</title>
+    <title>智能點名系統 (快速搜尋與學生管理版)</title>
     <!-- 引入 SheetJS 處理 Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 1100px; margin: 0 auto; background-color: #f4f6f9; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; background-color: #f4f6f9; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
         h1 { color: #2c3e50; text-align: center; margin-top: 0; }
         .control-group { margin-bottom: 15px; }
         label { font-weight: bold; display: block; margin-bottom: 6px; color: #34495e; }
-        select, input[type="file"], button { padding: 8px 10px; width: 100%; box-sizing: border-box; margin-bottom: 10px; font-size: 15px; border-radius: 5px; border: 1px solid #ccc; }
+        select, input[type="file"], input[type="text"], button { padding: 8px 10px; width: 100%; box-sizing: border-box; margin-bottom: 10px; font-size: 15px; border-radius: 5px; border: 1px solid #ccc; }
         
+        /* 側邊欄與工作區版面配置 */
+        .workspace-layout { display: flex; gap: 15px; align-items: flex-start; }
+        .class-sidebar { width: 180px; min-width: 180px; background: white; padding: 12px; border-radius: 8px; border: 1px solid #e0e0e0; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+        .class-sidebar h3 { font-size: 15px; margin-top: 0; margin-bottom: 10px; color: #2c3e50; border-bottom: 2px solid #0366d6; padding-bottom: 5px; }
+        .class-filter-btn { display: block; width: 100%; text-align: left; margin-bottom: 6px; padding: 8px 10px; font-size: 13px; border-radius: 5px; border: 1px solid #ddd; background: #f8f9fa; cursor: pointer; transition: all 0.2s; }
+        .class-filter-btn:hover { background-color: #eef5ff; border-color: #70a5e6; }
+        .class-filter-btn.active { background-color: #0366d6; color: white; border-color: #0366d6; font-weight: bold; }
+        .table-container { flex: 1; overflow-x: auto; }
+
         .date-bar { display: flex; gap: 10px; align-items: center; background: #eef5ff; padding: 12px; border-radius: 6px; margin-bottom: 15px; }
         .date-bar select { margin-bottom: 0; font-weight: bold; color: #0366d6; flex: 1; }
         
@@ -28,26 +37,43 @@
         .tag-both { background-color: #e8f5e9; color: #1b5e20; }
         .tag-none { background-color: #f5f5f5; color: #757575; }
 
-        /* 星期幾多選按鈕組 */
+        /* 按鈕樣式 */
         .day-toggle-group { display: inline-flex; gap: 2px; }
-        .day-btn { padding: 4px 7px; border: 1px solid #ccc; background: #f8f9fa; cursor: pointer; border-radius: 3px; font-size: 12px; color: #666; margin-bottom: 0; width: auto; }
+        .day-btn { padding: 4px 6px; border: 1px solid #ccc; background: #f8f9fa; cursor: pointer; border-radius: 3px; font-size: 12px; color: #666; margin-bottom: 0; width: auto; }
         .day-btn.selected { background-color: #dc3545; color: white; border-color: #dc3545; font-weight: bold; }
 
-        /* 狀態按鈕組 */
-        .status-btn-group { display: inline-flex; gap: 4px; }
-        .status-btn { padding: 5px 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; border-radius: 4px; font-size: 13px; margin-bottom: 0; width: auto; }
+        .status-btn-group { display: inline-flex; gap: 3px; }
+        .status-btn { padding: 5px 8px; border: 1px solid #ccc; background: #fff; cursor: pointer; border-radius: 4px; font-size: 12px; margin-bottom: 0; width: auto; }
         .status-btn.active-present { background-color: #28a745; color: white; border-color: #28a745; font-weight: bold; }
         .status-btn.active-absent { background-color: #dc3545; color: white; border-color: #dc3545; font-weight: bold; }
         .status-btn.active-leave { background-color: #ffc107; color: #212529; border-color: #ffc107; font-weight: bold; }
         .status-btn.active-late { background-color: #17a2b8; color: white; border-color: #17a2b8; font-weight: bold; }
 
+        .btn-edit { background-color: #6f42c1; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; width: auto; margin-bottom: 0; }
+        .btn-edit:hover { background-color: #59359a; }
+
         .summary-info { font-size: 14px; color: #666; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;}
+        .action-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+        .add-student-btn { background-color: #0366d6; color: white; font-weight: bold; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 13px; width: auto; margin-bottom: 0; }
+        .add-student-btn:hover { background-color: #024ea4; }
+
         .export-btn { background-color: #28a745; color: white; font-weight: bold; border: none; font-size: 16px; margin-top: 15px; cursor: pointer; padding: 12px; }
         .export-btn:hover { background-color: #218838; }
         .reset-btn { background-color: #6c757d; color: white; font-weight: bold; border: none; font-size: 13px; padding: 6px 12px; width: auto; margin-bottom: 0; cursor: pointer; }
-        .reset-btn:hover { background-color: #5a6268; }
         .save-tag { font-size: 12px; color: #28a745; font-weight: bold; display: none; }
         .tips { color: #555; font-size: 13px; line-height: 1.5; background: #eef5ff; padding: 10px; border-radius: 5px; margin-top: 5px; }
+
+        /* Modal 彈出視窗 */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-box { background: white; padding: 20px; border-radius: 8px; width: 380px; max-width: 90%; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        .modal-box h3 { margin-top: 0; color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .checkbox-group { display: flex; gap: 15px; margin-bottom: 15px; align-items: center; }
+        .checkbox-group label { font-weight: normal; margin-bottom: 0; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+        .checkbox-group input { width: auto; margin-bottom: 0; }
+        .modal-btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 15px; }
+        .modal-btns button { width: auto; padding: 8px 15px; margin-bottom: 0; font-size: 14px; cursor: pointer; }
+        .btn-confirm { background-color: #28a745; color: white; border: none; font-weight: bold; }
+        .btn-cancel { background-color: #6c757d; color: white; border: none; }
     </style>
 </head>
 <body>
@@ -59,7 +85,7 @@
         <label for="excelFile">1. 匯入 Excel 點名紙：</label>
         <input type="file" id="excelFile" accept=".xlsx, .xls" multiple>
         <div class="tips">
-            🚌 <b>新增放學方式欄位：</b> 自動讀取 Excel 的 <b>F欄 (先行)</b> 與 <b>G欄 (家長)</b>，並在匯出時保留格式。
+            🔍 <b>搜尋與排序優化：</b> 左側新增班別快速篩選，支援手動新增/編輯學生，系統自動依「班別 ➔ 學號」精準排序。
         </div>
     </div>
 
@@ -76,30 +102,79 @@
         </div>
 
         <div class="summary-info">
-            <div>訓練項目：<strong id="activityDisplay" style="color:#0366d6;">-</strong> | 學生總數：<strong id="studentCount">0</strong> 人</div>
+            <div>訓練項目：<strong id="activityDisplay" style="color:#0366d6;">-</strong> | 總人數：<strong id="studentCount">0</strong> 人</div>
             <div>
                 <span id="saveStatus" class="save-tag">✓ 已自動儲存</span>
                 <button type="button" class="reset-btn" id="resetBtn">清除資料 / 重新匯入</button>
             </div>
         </div>
 
-        <div style="overflow-x: auto;">
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 7%;">班別</th>
-                        <th style="width: 7%;">學號</th>
-                        <th style="width: 15%;">學生姓名</th>
-                        <th style="width: 12%;">放學方式</th>
-                        <th style="width: 27%;">個人固定缺席日 (可多選)</th>
-                        <th style="width: 32%;">當日點名狀態</th>
-                    </tr>
-                </thead>
-                <tbody id="studentTableBody"></tbody>
-            </table>
+        <div class="action-bar">
+            <button type="button" class="add-student-btn" onclick="openStudentModal(-1)">➕ 新增學生資料</button>
+        </div>
+
+        <div class="workspace-layout">
+            <!-- 左側班別快速篩選 -->
+            <div class="class-sidebar">
+                <h3>🔍 班別快速搜尋</h3>
+                <div id="classSidebarList"></div>
+            </div>
+
+            <!-- 右側表格 -->
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 7%;">班別</th>
+                            <th style="width: 7%;">學號</th>
+                            <th style="width: 14%;">學生姓名</th>
+                            <th style="width: 11%;">放學方式</th>
+                            <th style="width: 25%;">個人固定缺席日</th>
+                            <th style="width: 28%;">當日點名狀態</th>
+                            <th style="width: 8%;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="studentTableBody"></tbody>
+                </table>
+            </div>
         </div>
 
         <button type="button" class="export-btn" id="exportBtn">匯出原格式 Excel 點名紙</button>
+    </div>
+</div>
+
+<!-- 新增/編輯學生 Modal -->
+<div class="modal-overlay" id="studentModal">
+    <div class="modal-box">
+        <h3 id="modalTitle">➕ 新增學生資料</h3>
+        
+        <div class="control-group">
+            <label for="modalClass">班別：</label>
+            <input type="text" id="modalClass" placeholder="例如: 1A">
+        </div>
+        
+        <div class="control-group">
+            <label for="modalId">學號：</label>
+            <input type="text" id="modalId" placeholder="例如: 01">
+        </div>
+
+        <div class="control-group">
+            <label for="modalName">學生姓名：</label>
+            <input type="text" id="modalName" placeholder="例如: 陳大文">
+        </div>
+
+        <div class="control-group">
+            <label>放學方式：</label>
+            <div class="checkbox-group">
+                <label><input type="checkbox" id="modalWalk"> 先行</label>
+                <label><input type="checkbox" id="modalParent"> 家長</label>
+            </div>
+        </div>
+
+        <div class="modal-btns">
+            <button type="button" class="btn-cancel" onclick="closeStudentModal()">取消</button>
+            <button type="button" class="btn-confirm" onclick="saveStudent()">儲存</button>
+        </div>
     </div>
 </div>
 
@@ -108,6 +183,8 @@
     let dateList = [];        
     let activityName = "";    
     let attendanceMap = {};   
+    let currentClassFilter = "ALL"; // 班別篩選狀態
+    let editingStudentIndex = -1;  // -1 代表新增，>=0 代表編輯
 
     const weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
     const weekdayLabels = [
@@ -120,7 +197,7 @@
         { num: 0, label: "日" }
     ];
 
-    const LOCAL_STORAGE_KEY = "SMART_ROLLCALL_DATA_V6";
+    const LOCAL_STORAGE_KEY = "SMART_ROLLCALL_DATA_V7";
 
     const excelFileInput = document.getElementById('excelFile');
     const appWorkspace = document.getElementById('appWorkspace');
@@ -130,6 +207,7 @@
     const activityDisplay = document.getElementById('activityDisplay');
     const studentCount = document.getElementById('studentCount');
     const saveStatus = document.getElementById('saveStatus');
+    const classSidebarList = document.getElementById('classSidebarList');
 
     window.addEventListener('DOMContentLoaded', loadDataFromStorage);
 
@@ -148,13 +226,23 @@
         return val.toString().trim().replace(/[\r\n]+/g, ' ');
     }
 
+    // 自動依「班別 ➔ 學號」排序學生
+    function sortStudents() {
+        rawStudents.sort((a, b) => {
+            const cComp = (a.class || "").localeCompare(b.class || "", 'zh-HK', { numeric: true });
+            if (cComp !== 0) return cComp;
+            return (a.studentId || "").localeCompare(b.studentId || "", 'zh-HK', { numeric: true });
+        });
+    }
+
     function autoSave() {
         const storeObj = {
             rawStudents,
             dateList,
             activityName,
             attendanceMap,
-            selectedDate: dateSelect.value
+            selectedDate: dateSelect.value,
+            currentClassFilter
         };
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(storeObj));
         saveStatus.style.display = "inline";
@@ -171,8 +259,10 @@
             dateList = data.dateList || [];
             activityName = data.activityName || "";
             attendanceMap = data.attendanceMap || {};
+            if (data.currentClassFilter) currentClassFilter = data.currentClassFilter;
 
             if (rawStudents.length > 0 && dateList.length > 0) {
+                sortStudents();
                 activityDisplay.textContent = activityName;
                 studentCount.textContent = rawStudents.length;
 
@@ -189,6 +279,7 @@
                 if (data.selectedDate) dateSelect.value = data.selectedDate;
 
                 appWorkspace.style.display = 'block';
+                renderClassSidebar();
                 renderRollCallTable();
             }
         } catch(e) {
@@ -232,7 +323,6 @@
                         if (aoa[r] && aoa[r][3]) {
                             const sName = sanitizeStr(aoa[r][3]);
                             if (sName !== "") {
-                                // 讀取 F 欄 (索引5: 先行) 與 G 欄 (索引6: 家長)
                                 const valWalk = sanitizeStr(aoa[r][5]);
                                 const valParent = sanitizeStr(aoa[r][6]);
 
@@ -278,6 +368,7 @@
 
             dateList = Array.from(allDatesSet).sort((a, b) => new Date(a) - new Date(b));
             rawStudents = Array.from(studentMap.values());
+            sortStudents();
             studentCount.textContent = rawStudents.length;
 
             attendanceMap = {};
@@ -298,7 +389,9 @@
                 dateSelect.appendChild(opt);
             });
 
+            currentClassFilter = "ALL";
             appWorkspace.style.display = 'block';
+            renderClassSidebar();
             renderRollCallTable();
             autoSave();
         });
@@ -308,6 +401,43 @@
         renderRollCallTable();
         autoSave();
     });
+
+    // 渲染左側班別快速搜尋選單
+    function renderClassSidebar() {
+        classSidebarList.innerHTML = "";
+
+        const classes = Array.from(new Set(rawStudents.map(s => s.class).filter(c => c)))
+                             .sort((a, b) => a.localeCompare(b, 'zh-HK', { numeric: true }));
+
+        // 全部班別按鈕
+        const allBtn = document.createElement('button');
+        allBtn.type = 'button';
+        allBtn.className = `class-filter-btn ${currentClassFilter === 'ALL' ? 'active' : ''}`;
+        allBtn.textContent = `全部班別 (${rawStudents.length})`;
+        allBtn.onclick = () => {
+            currentClassFilter = 'ALL';
+            renderClassSidebar();
+            renderRollCallTable();
+            autoSave();
+        };
+        classSidebarList.appendChild(allBtn);
+
+        // 各班別按鈕
+        classes.forEach(cName => {
+            const count = rawStudents.filter(s => s.class === cName).length;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `class-filter-btn ${currentClassFilter === cName ? 'active' : ''}`;
+            btn.textContent = `${cName} (${count}人)`;
+            btn.onclick = () => {
+                currentClassFilter = cName;
+                renderClassSidebar();
+                renderRollCallTable();
+                autoSave();
+            };
+            classSidebarList.appendChild(btn);
+        });
+    }
 
     studentTableBody.addEventListener('click', (e) => {
         const btn = e.target.closest('button');
@@ -329,6 +459,9 @@
             if (studentName && !isNaN(dayNum)) {
                 toggleStudentFixedAbsent(studentName, dayNum);
             }
+        } else if (action === 'edit-student') {
+            const sIdx = rawStudents.findIndex(s => s.name === studentName);
+            if (sIdx > -1) openStudentModal(sIdx);
         }
     });
 
@@ -343,7 +476,12 @@
 
         studentTableBody.innerHTML = "";
 
-        rawStudents.forEach(student => {
+        // 依班別快速過濾
+        const filteredStudents = currentClassFilter === 'ALL' 
+            ? rawStudents 
+            : rawStudents.filter(s => s.class === currentClassFilter);
+
+        filteredStudents.forEach(student => {
             const currentStatus = attendanceMap[`${selectedDate}_${student.name}`] || "出席";
             const fixedDays = student.fixedAbsentDays || [];
             const tr = document.createElement('tr');
@@ -362,7 +500,7 @@
             strongName.textContent = student.name;
             tdName.appendChild(strongName);
 
-            // 4. 放學方式 (獨立欄位)
+            // 4. 放學方式
             const tdDismiss = document.createElement('td');
             const spanDismiss = document.createElement('span');
             let methodCls = 'tag-none';
@@ -415,12 +553,23 @@
             });
             tdStatus.appendChild(statusGroup);
 
+            // 7. 操作 (編輯按鈕)
+            const tdAction = document.createElement('td');
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'btn-edit';
+            editBtn.textContent = '✏️ 編輯';
+            editBtn.dataset.action = 'edit-student';
+            editBtn.dataset.student = student.name;
+            tdAction.appendChild(editBtn);
+
             tr.appendChild(tdClass);
             tr.appendChild(tdId);
             tr.appendChild(tdName);
             tr.appendChild(tdDismiss);
             tr.appendChild(tdFixed);
             tr.appendChild(tdStatus);
+            tr.appendChild(tdAction);
 
             studentTableBody.appendChild(tr);
         });
@@ -456,6 +605,102 @@
         autoSave();
     }
 
+    /* Modal 控制與學生新增/編輯邏輯 */
+    function openStudentModal(index = -1) {
+        editingStudentIndex = index;
+        const modal = document.getElementById('studentModal');
+        const title = document.getElementById('modalTitle');
+
+        if (index === -1) {
+            title.textContent = "➕ 新增學生資料";
+            document.getElementById('modalClass').value = currentClassFilter !== 'ALL' ? currentClassFilter : "";
+            document.getElementById('modalId').value = "";
+            document.getElementById('modalName').value = "";
+            document.getElementById('modalWalk').checked = false;
+            document.getElementById('modalParent').checked = false;
+        } else {
+            title.textContent = "✏️ 編輯學生資料";
+            const s = rawStudents[index];
+            document.getElementById('modalClass').value = s.class;
+            document.getElementById('modalId').value = s.studentId;
+            document.getElementById('modalName').value = s.name;
+            document.getElementById('modalWalk').checked = s.hasWalk;
+            document.getElementById('modalParent').checked = s.hasParent;
+        }
+        modal.style.display = 'flex';
+    }
+
+    function closeStudentModal() {
+        document.getElementById('studentModal').style.display = 'none';
+    }
+
+    function saveStudent() {
+        const cVal = sanitizeStr(document.getElementById('modalClass').value);
+        const idVal = sanitizeStr(document.getElementById('modalId').value);
+        const nameVal = sanitizeStr(document.getElementById('modalName').value);
+        const isWalk = document.getElementById('modalWalk').checked;
+        const isParent = document.getElementById('modalParent').checked;
+
+        if (!nameVal) {
+            alert("請填寫學生姓名！");
+            return;
+        }
+
+        let dismissType = "未註明";
+        if (isWalk && isParent) dismissType = "先行/家長";
+        else if (isWalk) dismissType = "先行";
+        else if (isParent) dismissType = "家長";
+
+        if (editingStudentIndex === -1) {
+            // 新增學生檢查重名
+            if (rawStudents.some(s => s.name === nameVal)) {
+                alert("已存在相同姓名的學生！");
+                return;
+            }
+            const newStudent = {
+                class: cVal,
+                studentId: idVal,
+                name: nameVal,
+                dismissMethod: dismissType,
+                hasWalk: isWalk,
+                hasParent: isParent,
+                fixedAbsentDays: []
+            };
+            rawStudents.push(newStudent);
+            dateList.forEach(d => {
+                attendanceMap[`${d}_${nameVal}`] = "出席";
+            });
+        } else {
+            // 編輯學生
+            const oldStudent = rawStudents[editingStudentIndex];
+            const oldName = oldStudent.name;
+
+            // 若改名，轉移點名紀錄
+            if (oldName !== nameVal) {
+                dateList.forEach(d => {
+                    if (attendanceMap[`${d}_${oldName}`]) {
+                        attendanceMap[`${d}_${nameVal}`] = attendanceMap[`${d}_${oldName}`];
+                        delete attendanceMap[`${d}_${oldName}`];
+                    }
+                });
+            }
+
+            oldStudent.class = cVal;
+            oldStudent.studentId = idVal;
+            oldStudent.name = nameVal;
+            oldStudent.dismissMethod = dismissType;
+            oldStudent.hasWalk = isWalk;
+            oldStudent.hasParent = isParent;
+        }
+
+        sortStudents();
+        closeStudentModal();
+        renderClassSidebar();
+        renderRollCallTable();
+        studentCount.textContent = rawStudents.length;
+        autoSave();
+    }
+
     document.getElementById('resetBtn').addEventListener('click', () => {
         if (confirm("確定要清除目前的資料並重新匯入檔案嗎？")) {
             localStorage.removeItem(LOCAL_STORAGE_KEY);
@@ -463,22 +708,19 @@
         }
     });
 
-    // 匯出原格式 Excel (含 F欄: 先行, G欄: 家長)
+    // 匯出原格式 Excel
     document.getElementById('exportBtn').addEventListener('click', () => {
         let aoaData = [];
 
         aoaData.push([]);
         aoaData.push([]);
 
-        // Row 3: A3 填寫活動名稱
         aoaData.push([activityName]);
 
-        // Row 4: 表頭 (F4: 先行, G4: 家長)
         let headerRow = ["", "班別", "學號", "學生姓名", "", "先行", "家長", ""];
         dateList.forEach(d => headerRow.push(d));
         aoaData.push(headerRow);
 
-        // Row 5+: 學生與點名矩陣
         rawStudents.forEach(student => {
             const walkMark = student.hasWalk ? "✓" : "";
             const parentMark = student.hasParent ? "✓" : "";
