@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能點名系統 (支援個人固定缺席)</title>
+    <title>智能點名系統 (雙 Excel 自動合併版)</title>
     <!-- 引入 SheetJS 處理 Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
@@ -34,6 +34,7 @@
         .summary-info { font-size: 14px; color: #666; margin-bottom: 10px; display: flex; justify-content: space-between; }
         .export-btn { background-color: #28a745; color: white; font-weight: bold; border: none; font-size: 16px; margin-top: 15px; cursor: pointer; padding: 12px; }
         .export-btn:hover { background-color: #218838; }
+        .tips { color: #555; font-size: 13px; line-height: 1.5; background: #eef5ff; padding: 10px; border-radius: 5px; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -42,8 +43,14 @@
     <h1>📝 智能點名系統</h1>
     
     <div class="control-group">
-        <label for="excelFile">1. 匯入 Excel 點名紙：</label>
-        <input type="file" id="excelFile" accept=".xlsx, .xls">
+        <label for="excelFile">1. 匯入 Excel 點名紙 (可按住 Ctrl 同時選取多個檔案)：</label>
+        <input type="file" id="excelFile" accept=".xlsx, .xls" multiple>
+        <div class="tips">
+            <strong>多檔案合併機制：</strong><br>
+            📌 <b>訓練項目</b>：以第 1 個 Excel 檔案中的 A3 為準。<br>
+            📌 <b>訓練日期</b>：自動合併所有 Excel 檔案的日期（重複日期自動去重並按時間排序）。<br>
+            📌 <b>學生名單</b>：自動合併所有 Excel 檔案的學生（重複姓名自動保留一個）。
+        </div>
     </div>
 
     <!-- 點名工作區 -->
@@ -60,7 +67,7 @@
 
         <div class="summary-info">
             <span>訓練項目：<strong id="activityDisplay" style="color:#0366d6;">-</strong></span>
-            <span>學生總數：<strong id="studentCount">0</strong> 人</span>
+            <span>合流學生總數：<strong id="studentCount">0</strong> 人</span>
         </div>
 
         <div style="overflow-x: auto;">
@@ -83,10 +90,10 @@
 </div>
 
 <script>
-    let rawStudents = [];     // 學生名單 [{class, studentId, name, fixedAbsentDay}]
-    let dateList = [];        // 日期清單 ["2026-09-01", ...]
-    let activityName = "";    // 活動名稱
-    let attendanceMap = {};   // 記錄所有人日常點名: { "日期_姓名": "出席" | "缺席" | "請假" | "遲到" }
+    let rawStudents = [];     // 去重後的學生名單 [{class, studentId, name, fixedAbsentDay}]
+    let dateList = [];        // 去重排序後的日期清單 ["2026-09-01", ...]
+    let activityName = "";    // 第一個檔案的活動名稱
+    let attendanceMap = {};   // 記錄點名狀態: { "日期_姓名": "出席" | "缺席" | "請假" | "遲到" }
 
     const weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
 
@@ -98,45 +105,69 @@
     const activityDisplay = document.getElementById('activityDisplay');
     const studentCount = document.getElementById('studentCount');
 
-    // 讀取 Excel 檔案
+    // 處理多檔案讀取與合併
     excelFileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
 
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-            const data = new Uint8Array(evt.target.result);
-            const workbook = XLSX.read(data, {type: 'array', cellDates: true});
-            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-            const aoa = XLSX.utils.sheet_to_json(worksheet, {header: 1, raw: false, dateNF: 'yyyy-mm-dd'});
+        let allDatesSet = new Set();
+        let studentMap = new Map(); // 用姓名為 key 進行去重
+        let primaryActivityName = "";
 
-            // 1. 活動名稱 (A3)
-            activityName = (aoa[2] && aoa[2][0]) ? aoa[2][0] : "訓練活動";
+        const readPromises = files.map((file, index) => {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const aoa = XLSX.utils.sheet_to_json(worksheet, {header: 1, raw: false, dateNF: 'yyyy-mm-dd'});
+
+                    // 1. 抽取第一個檔案的活動名稱 (A3)
+                    if (index === 0) {
+                        primaryActivityName = (aoa[2] && aoa[2][0]) ? aoa[2][0] : "訓練活動";
+                    }
+
+                    // 2. 抽取日期 (I4 到 CD4) 並放入 Set 去重
+                    const dateRow = aoa[3] || [];
+                    for (let col = 8; col < dateRow.length; col++) {
+                        if (dateRow[col] && dateRow[col].toString().trim() !== "") {
+                            allDatesSet.add(dateRow[col].toString().trim());
+                        }
+                    }
+
+                    // 3. 抽取學生資料 (B5:班別, C5:學號, D5:姓名) 並進行去重
+                    for (let r = 4; r < aoa.length; r++) {
+                        if (aoa[r] && aoa[r][3]) {
+                            const sName = aoa[r][3].toString().trim();
+                            if (sName && !studentMap.has(sName)) {
+                                studentMap.set(sName, {
+                                    class: aoa[r][1] || "",
+                                    studentId: aoa[r][2] || "",
+                                    name: sName,
+                                    fixedAbsentDay: -1
+                                });
+                            }
+                        }
+                    }
+                    resolve();
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        });
+
+        Promise.all(readPromises).then(() => {
+            activityName = primaryActivityName;
             activityDisplay.textContent = activityName;
 
-            // 2. 訓練日期 (I4 至 CD4)
-            dateList = [];
-            const dateRow = aoa[3] || [];
-            for (let col = 8; col < dateRow.length; col++) {
-                if (dateRow[col]) dateList.push(dateRow[col]);
-            }
+            // 日期整理與排序
+            dateList = Array.from(allDatesSet).sort((a, b) => new Date(a) - new Date(b));
 
-            // 3. 學生名單 (B5:班別, C5:學號, D5:姓名)
-            rawStudents = [];
-            for (let r = 4; r < aoa.length; r++) {
-                if (aoa[r] && aoa[r][3]) {
-                    rawStudents.push({
-                        class: aoa[r][1] || "",
-                        studentId: aoa[r][2] || "",
-                        name: aoa[r][3],
-                        fixedAbsentDay: -1 // 預設無固定缺席 (-1)
-                    });
-                }
-            }
-
+            // 學生清單整理
+            rawStudents = Array.from(studentMap.values());
             studentCount.textContent = rawStudents.length;
 
-            // 初始化所有日期的預設狀態為「出席」
+            // 初始化狀態對照表 (預設全出席)
             attendanceMap = {};
             dateList.forEach(d => {
                 rawStudents.forEach(s => {
@@ -144,7 +175,7 @@
                 });
             });
 
-            // 渲染日期下拉選單
+            // 更新日期選單
             dateSelect.innerHTML = "";
             dateList.forEach((d, idx) => {
                 const opt = document.createElement('option');
@@ -157,13 +188,12 @@
 
             appWorkspace.style.display = 'block';
             renderRollCallTable();
-        };
-        reader.readAsArrayBuffer(file);
+        });
     });
 
     dateSelect.addEventListener('change', renderRollCallTable);
 
-    // 渲染特定日期的點名表格
+    // 渲染表格
     function renderRollCallTable() {
         const selectedDate = dateSelect.value;
         if (!selectedDate) return;
@@ -208,7 +238,7 @@
         });
     }
 
-    // 修改特定學生的固定缺席設定 (僅影響該名學生)
+    // 更新個人固定缺席日
     window.updateStudentFixedAbsent = function(studentName, absentDayStr) {
         const absentDay = parseInt(absentDayStr);
         const student = rawStudents.find(s => s.name === studentName);
@@ -216,27 +246,23 @@
             student.fixedAbsentDay = absentDay;
         }
 
-        // 重新計算該名學生在所有日期的狀態
         dateList.forEach(d => {
             const dObj = new Date(d);
-            if (!isNaN(dObj)) {
-                if (dObj.getDay() === absentDay) {
-                    // 若符合固定缺席日，自動改為缺席
-                    attendanceMap[`${d}_${studentName}`] = "缺席";
-                }
+            if (!isNaN(dObj) && dObj.getDay() === absentDay) {
+                attendanceMap[`${d}_${studentName}`] = "缺席";
             }
         });
 
         renderRollCallTable();
     };
 
-    // 手動修改特定學生當日的點名狀態
+    // 手動變更點名狀態
     window.setStatus = function(date, studentName, status) {
         attendanceMap[`${date}_${studentName}`] = status;
         renderRollCallTable();
     };
 
-    // 匯出 Excel
+    // 匯出完整 Excel
     document.getElementById('exportBtn').addEventListener('click', () => {
         let exportData = [];
 
