@@ -7,19 +7,20 @@
     <!-- 引入 SheetJS 函式庫來處理 Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; background-color: #f9f9f9; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; background-color: #f9f9f9; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
         h1 { color: #333; text-align: center; }
         .control-group { margin-bottom: 15px; }
         label { font-weight: bold; display: block; margin-bottom: 5px; }
         select, input[type="file"], button { padding: 8px; width: 100%; box-sizing: border-box; margin-bottom: 10px; font-size: 16px; }
-        button { background-color: #0366d6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button { background-color: #0366d6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; padding: 12px; }
         button:hover { background-color: #024ea4; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-        th { background-color: #f2f2f2; }
+        th { background-color: #f2f2f2; white-space: nowrap; }
         .absent { color: red; font-weight: bold; }
+        .tips { color: #666; font-size: 13px; line-height: 1.5; background: #eef5ff; padding: 10px; border-radius: 5px; margin-top: 5px;}
     </style>
 </head>
 <body>
@@ -30,7 +31,12 @@
     <div class="control-group">
         <label for="excelFile">1. 匯入 Excel 檔案：</label>
         <input type="file" id="excelFile" accept=".xlsx, .xls">
-        <small style="color: #666;">* 確保 Excel 內包含「訓練項目」、「人名」、「訓練日期」欄位</small>
+        <div class="tips">
+            <strong>系統讀取規則：</strong><br>
+            📌 學生資訊：從第 5 列開始讀取 <b>班別 (B欄)</b>、<b>學號 (C欄)</b>、<b>學生姓名 (D欄)</b><br>
+            📌 訓練日期：自動讀取第 4 列的 <b>I4 至 CD4</b><br>
+            📌 活動名稱：固定讀取 <b>A3</b> 儲存格
+        </div>
     </div>
 
     <div class="control-group">
@@ -48,7 +54,7 @@
     </div>
 
     <button id="processBtn" disabled>3. 處理並預覽資料</button>
-    <button id="exportBtn" style="display: none; background-color: #28a745;">4. 匯出結果 (Excel)</button>
+    <button id="exportBtn" style="display: none; background-color: #28a745; margin-top: 10px;">4. 匯出結果 (Excel)</button>
 </div>
 
 <div id="previewContainer" class="card" style="display: none;">
@@ -57,8 +63,10 @@
         <table id="previewTable">
             <thead>
                 <tr>
+                    <th>班別</th>
+                    <th>學號</th>
+                    <th>學生姓名</th>
                     <th>訓練項目</th>
-                    <th>人名</th>
                     <th>訓練日期</th>
                     <th>星期</th>
                     <th>狀態</th>
@@ -70,7 +78,7 @@
 </div>
 
 <script>
-    let processedData = []; // 儲存處理後的資料
+    let processedData = []; 
     const excelFileInput = document.getElementById('excelFile');
     const processBtn = document.getElementById('processBtn');
     const exportBtn = document.getElementById('exportBtn');
@@ -93,56 +101,78 @@
         reader.onload = (e) => {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
             
-            // 讀取第一個工作表
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
-            
-            // 將 Excel 轉換為 JSON 陣列
-            let jsonData = XLSX.utils.sheet_to_json(worksheet, {raw: false, dateNF: 'yyyy-mm-dd'});
+            // 以二維陣列 (header: 1) 讀取
+            const aoa = XLSX.utils.sheet_to_json(worksheet, {header: 1, raw: false, dateNF: 'yyyy-mm-dd'});
             
             processedData = [];
-            tbody.innerHTML = ''; // 清空預覽表
+            tbody.innerHTML = ''; 
 
-            jsonData.forEach(row => {
-                // 嘗試抓取日期
-                const dateStr = row['訓練日期'];
-                let dayOfWeek = -1;
-                let weekdayStr = "";
-                
-                if (dateStr) {
+            // 1. 抽取活動名稱 (A3 -> 陣列索引 [2][0])
+            const activityName = (aoa[2] && aoa[2][0]) ? aoa[2][0] : "未命名訓練";
+
+            // 2. 抽取訓練日期 (I4 到 CD4 -> 陣列索引 [3])
+            // I 欄的索引是 8
+            let dateList = [];
+            const dateRow = aoa[3] || [];
+            for (let col = 8; col < dateRow.length; col++) {
+                if (dateRow[col]) {
+                    dateList.push(dateRow[col]);
+                }
+            }
+
+            // 3. 抽取學生資訊：班別(B欄->[1])、學號(C欄->[2])、姓名(D欄->[3])
+            let studentList = [];
+            for (let r = 4; r < aoa.length; r++) {
+                // 只有當「學生姓名 (D欄)」有資料時，才視為有效資料
+                if (aoa[r] && aoa[r][3]) { 
+                    studentList.push({
+                        class: aoa[r][1] || "",
+                        studentId: aoa[r][2] || "",
+                        name: aoa[r][3]
+                    });
+                }
+            }
+
+            // 4. 交叉比對：為每位學生產生所有日期的點名紀錄
+            studentList.forEach(student => {
+                dateList.forEach(dateStr => {
+                    let dayOfWeek = -1;
+                    let weekdayStr = "";
+                    
                     const dateObj = new Date(dateStr);
                     if (!isNaN(dateObj)) {
-                        dayOfWeek = dateObj.getDay(); // 0(日) 到 6(六)
+                        dayOfWeek = dateObj.getDay();
                         weekdayStr = weekdays[dayOfWeek];
                     }
-                }
 
-                // 判斷狀態
-                let status = "出席";
-                if (dayOfWeek === absentDayValue) {
-                    status = "缺席";
-                }
+                    let status = (dayOfWeek === absentDayValue) ? "缺席" : "出席";
 
-                // 建立新資料物件
-                const newRow = {
-                    "訓練項目": row['訓練項目'] || "",
-                    "人名": row['人名'] || "",
-                    "訓練日期": dateStr || "",
-                    "狀態": status
-                };
-                processedData.push(newRow);
+                    // 建立新的資料列，包含班別、學號、姓名
+                    const newRow = {
+                        "班別": student.class,
+                        "學號": student.studentId,
+                        "學生姓名": student.name,
+                        "訓練項目": activityName,
+                        "訓練日期": dateStr,
+                        "狀態": status
+                    };
+                    processedData.push(newRow);
 
-                // 更新 HTML 預覽表格
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${newRow['訓練項目']}</td>
-                    <td>${newRow['人名']}</td>
-                    <td>${newRow['訓練日期']}</td>
-                    <td>${weekdayStr}</td>
-                    <td class="${status === '缺席' ? 'absent' : ''}">${status}</td>
-                `;
-                tbody.appendChild(tr);
+                    // 更新 HTML 預覽表格
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${newRow['班別']}</td>
+                        <td>${newRow['學號']}</td>
+                        <td>${newRow['學生姓名']}</td>
+                        <td>${newRow['訓練項目']}</td>
+                        <td>${newRow['訓練日期']}</td>
+                        <td>${weekdayStr}</td>
+                        <td class="${status === '缺席' ? 'absent' : ''}">${status}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
             });
 
             previewContainer.style.display = 'block';
@@ -153,12 +183,10 @@
 
     // 匯出 Excel
     exportBtn.addEventListener('click', () => {
-        // 建立新的工作表與活頁簿
         const worksheet = XLSX.utils.json_to_sheet(processedData);
         const newWorkbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(newWorkbook, worksheet, "點名結果");
         
-        // 觸發下載
         XLSX.writeFile(newWorkbook, "點名結果_" + new Date().getTime() + ".xlsx");
     });
 </script>
