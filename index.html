@@ -3,53 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>每日互動點名系統</title>
+    <title>智能點名系統 (支援個人固定缺席)</title>
     <!-- 引入 SheetJS 處理 Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 950px; margin: 0 auto; background-color: #f4f6f9; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 1000px; margin: 0 auto; background-color: #f4f6f9; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
         h1 { color: #2c3e50; text-align: center; margin-top: 0; }
         .control-group { margin-bottom: 15px; }
         label { font-weight: bold; display: block; margin-bottom: 6px; color: #34495e; }
-        select, input[type="file"], button { padding: 10px; width: 100%; box-sizing: border-box; margin-bottom: 10px; font-size: 15px; border-radius: 5px; border: 1px solid #ccc; }
+        select, input[type="file"], button { padding: 8px 10px; width: 100%; box-sizing: border-box; margin-bottom: 10px; font-size: 15px; border-radius: 5px; border: 1px solid #ccc; }
         
         .date-bar { display: flex; gap: 10px; align-items: center; background: #eef5ff; padding: 12px; border-radius: 6px; margin-bottom: 15px; }
         .date-bar select { margin-bottom: 0; font-weight: bold; color: #0366d6; flex: 1; }
         
-        .quick-actions { display: flex; gap: 10px; margin-bottom: 15px; }
-        .quick-actions button { margin-bottom: 0; cursor: pointer; font-size: 13px; font-weight: bold; border: none; color: white; }
-        .btn-all-present { background-color: #28a745; }
-        .btn-apply-rule { background-color: #17a2b8; }
-        
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; background: white; }
-        th, td { border: 1px solid #e0e0e0; padding: 10px; text-align: center; }
+        th, td { border: 1px solid #e0e0e0; padding: 8px; text-align: center; }
         th { background-color: #f8f9fa; color: #495057; }
         
+        .student-select { padding: 4px; font-size: 13px; margin-bottom: 0; width: 100%; }
+
         /* 狀態按鈕組 */
         .status-btn-group { display: inline-flex; gap: 4px; }
-        .status-btn { padding: 6px 12px; border: 1px solid #ccc; background: #fff; cursor: pointer; border-radius: 4px; font-size: 13px; margin-bottom: 0; width: auto; }
+        .status-btn { padding: 5px 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; border-radius: 4px; font-size: 13px; margin-bottom: 0; width: auto; }
         .status-btn.active-present { background-color: #28a745; color: white; border-color: #28a745; font-weight: bold; }
         .status-btn.active-absent { background-color: #dc3545; color: white; border-color: #dc3545; font-weight: bold; }
         .status-btn.active-leave { background-color: #ffc107; color: #212529; border-color: #ffc107; font-weight: bold; }
         .status-btn.active-late { background-color: #17a2b8; color: white; border-color: #17a2b8; font-weight: bold; }
 
         .summary-info { font-size: 14px; color: #666; margin-bottom: 10px; display: flex; justify-content: space-between; }
-        .export-btn { background-color: #28a745; color: white; font-weight: bold; border: none; font-size: 16px; margin-top: 15px; cursor: pointer; }
+        .export-btn { background-color: #28a745; color: white; font-weight: bold; border: none; font-size: 16px; margin-top: 15px; cursor: pointer; padding: 12px; }
         .export-btn:hover { background-color: #218838; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h1>📝 每日互動點名系統</h1>
+    <h1>📝 智能點名系統</h1>
     
     <div class="control-group">
         <label for="excelFile">1. 匯入 Excel 點名紙：</label>
         <input type="file" id="excelFile" accept=".xlsx, .xls">
     </div>
 
-    <!-- 點名工作區 (讀取檔案後顯示) -->
+    <!-- 點名工作區 -->
     <div id="appWorkspace" style="display: none;">
         <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
         
@@ -61,27 +58,20 @@
             </div>
         </div>
 
-        <div class="control-group">
-            <label>快速設定：</label>
-            <div class="quick-actions">
-                <button class="btn-all-present" id="btnAllPresent">全日預設為「出席」</button>
-                <button class="btn-apply-rule" id="btnApplyRule">按星期幾自動標記「缺席」</button>
-            </div>
-        </div>
-
         <div class="summary-info">
             <span>訓練項目：<strong id="activityDisplay" style="color:#0366d6;">-</strong></span>
-            <span>總人數：<strong id="studentCount">0</strong> 人</span>
+            <span>學生總數：<strong id="studentCount">0</strong> 人</span>
         </div>
 
         <div style="overflow-x: auto;">
             <table>
                 <thead>
                     <tr>
-                        <th>班別</th>
-                        <th>學號</th>
-                        <th>學生姓名</th>
-                        <th>點名狀態</th>
+                        <th style="width: 10%;">班別</th>
+                        <th style="width: 10%;">學號</th>
+                        <th style="width: 18%;">學生姓名</th>
+                        <th style="width: 27%;">個人固定缺席日</th>
+                        <th style="width: 35%;">當日點名狀態</th>
                     </tr>
                 </thead>
                 <tbody id="studentTableBody"></tbody>
@@ -93,7 +83,7 @@
 </div>
 
 <script>
-    let rawStudents = [];     // 學生名單 [{class, studentId, name}]
+    let rawStudents = [];     // 學生名單 [{class, studentId, name, fixedAbsentDay}]
     let dateList = [];        // 日期清單 ["2026-09-01", ...]
     let activityName = "";    // 活動名稱
     let attendanceMap = {};   // 記錄所有人日常點名: { "日期_姓名": "出席" | "缺席" | "請假" | "遲到" }
@@ -108,7 +98,7 @@
     const activityDisplay = document.getElementById('activityDisplay');
     const studentCount = document.getElementById('studentCount');
 
-    // 匯入 Excel 檔案
+    // 讀取 Excel 檔案
     excelFileInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -138,7 +128,8 @@
                     rawStudents.push({
                         class: aoa[r][1] || "",
                         studentId: aoa[r][2] || "",
-                        name: aoa[r][3]
+                        name: aoa[r][3],
+                        fixedAbsentDay: -1 // 預設無固定缺席 (-1)
                     });
                 }
             }
@@ -170,7 +161,6 @@
         reader.readAsArrayBuffer(file);
     });
 
-    // 日期切換事件
     dateSelect.addEventListener('change', renderRollCallTable);
 
     // 渲染特定日期的點名表格
@@ -194,6 +184,18 @@
                 <td>${student.studentId}</td>
                 <td><strong>${student.name}</strong></td>
                 <td>
+                    <select class="student-select" onchange="updateStudentFixedAbsent('${student.name}', this.value)">
+                        <option value="-1" ${student.fixedAbsentDay === -1 ? 'selected' : ''}>無固定缺席</option>
+                        <option value="1" ${student.fixedAbsentDay === 1 ? 'selected' : ''}>逢星期一缺席</option>
+                        <option value="2" ${student.fixedAbsentDay === 2 ? 'selected' : ''}>逢星期二缺席</option>
+                        <option value="3" ${student.fixedAbsentDay === 3 ? 'selected' : ''}>逢星期三缺席</option>
+                        <option value="4" ${student.fixedAbsentDay === 4 ? 'selected' : ''}>逢星期四缺席</option>
+                        <option value="5" ${student.fixedAbsentDay === 5 ? 'selected' : ''}>逢星期五缺席</option>
+                        <option value="6" ${student.fixedAbsentDay === 6 ? 'selected' : ''}>逢星期六缺席</option>
+                        <option value="0" ${student.fixedAbsentDay === 0 ? 'selected' : ''}>逢星期日缺席</option>
+                    </select>
+                </td>
+                <td>
                     <div class="status-btn-group">
                         <button class="status-btn ${currentStatus === '出席' ? 'active-present' : ''}" onclick="setStatus('${selectedDate}', '${student.name}', '出席')">出席</button>
                         <button class="status-btn ${currentStatus === '缺席' ? 'active-absent' : ''}" onclick="setStatus('${selectedDate}', '${student.name}', '缺席')">缺席</button>
@@ -206,46 +208,35 @@
         });
     }
 
-    // 修改特定學生點名狀態
+    // 修改特定學生的固定缺席設定 (僅影響該名學生)
+    window.updateStudentFixedAbsent = function(studentName, absentDayStr) {
+        const absentDay = parseInt(absentDayStr);
+        const student = rawStudents.find(s => s.name === studentName);
+        if (student) {
+            student.fixedAbsentDay = absentDay;
+        }
+
+        // 重新計算該名學生在所有日期的狀態
+        dateList.forEach(d => {
+            const dObj = new Date(d);
+            if (!isNaN(dObj)) {
+                if (dObj.getDay() === absentDay) {
+                    // 若符合固定缺席日，自動改為缺席
+                    attendanceMap[`${d}_${studentName}`] = "缺席";
+                }
+            }
+        });
+
+        renderRollCallTable();
+    };
+
+    // 手動修改特定學生當日的點名狀態
     window.setStatus = function(date, studentName, status) {
         attendanceMap[`${date}_${studentName}`] = status;
         renderRollCallTable();
     };
 
-    // 快速功能：全日設為出席
-    document.getElementById('btnAllPresent').addEventListener('click', () => {
-        const selectedDate = dateSelect.value;
-        rawStudents.forEach(s => {
-            attendanceMap[`${selectedDate}_${s.name}`] = "出席";
-        });
-        renderRollCallTable();
-    });
-
-    // 快速功能：逢星期幾設定缺席
-    document.getElementById('btnApplyRule').addEventListener('click', () => {
-        const dayInput = prompt("請輸入固定缺席的星期幾數字：\n1 = 星期一\n2 = 星期二\n3 = 星期三\n4 = 星期四\n5 = 星期五\n6 = 星期六\n0 = 星期日");
-        if (dayInput === null) return;
-        
-        const targetDay = parseInt(dayInput);
-        if (isNaN(targetDay) || targetDay < 0 || targetDay > 6) {
-            alert("請輸入有效的數字 (0 至 6)");
-            return;
-        }
-
-        dateList.forEach(d => {
-            const dObj = new Date(d);
-            if (!isNaN(dObj) && dObj.getDay() === targetDay) {
-                rawStudents.forEach(s => {
-                    attendanceMap[`${d}_${s.name}`] = "缺席";
-                });
-            }
-        });
-
-        alert(`已完成將所有 ${weekdays[targetDay]} 設定為缺席！`);
-        renderRollCallTable();
-    });
-
-    // 匯出完整 Excel 檔案
+    // 匯出 Excel
     document.getElementById('exportBtn').addEventListener('click', () => {
         let exportData = [];
 
