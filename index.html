@@ -3,35 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能點名系統 (快速搜尋與學生管理版)</title>
+    <title>智能點名系統 (手機極速點名版)</title>
     <!-- 引入 SheetJS 處理 Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; background-color: #f4f6f9; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
-        h1 { color: #2c3e50; text-align: center; margin-top: 0; }
-        .control-group { margin-bottom: 15px; }
-        label { font-weight: bold; display: block; margin-bottom: 6px; color: #34495e; }
-        select, input[type="file"], input[type="text"], button { padding: 8px 10px; width: 100%; box-sizing: border-box; margin-bottom: 10px; font-size: 15px; border-radius: 5px; border: 1px solid #ccc; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 15px; max-width: 1200px; margin: 0 auto; background-color: #f4f6f9; }
+        .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 15px; }
+        h1 { color: #2c3e50; text-align: center; margin-top: 0; font-size: 22px; }
+        .control-group { margin-bottom: 12px; }
+        label { font-weight: bold; display: block; margin-bottom: 5px; color: #34495e; font-size: 14px; }
+        select, input[type="file"], input[type="text"], button { padding: 8px 10px; width: 100%; box-sizing: border-box; margin-bottom: 8px; font-size: 14px; border-radius: 5px; border: 1px solid #ccc; }
         
         /* 側邊欄與工作區版面配置 */
         .workspace-layout { display: flex; gap: 15px; align-items: flex-start; }
-        .class-sidebar { width: 180px; min-width: 180px; background: white; padding: 12px; border-radius: 8px; border: 1px solid #e0e0e0; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
-        .class-sidebar h3 { font-size: 15px; margin-top: 0; margin-bottom: 10px; color: #2c3e50; border-bottom: 2px solid #0366d6; padding-bottom: 5px; }
-        .class-filter-btn { display: block; width: 100%; text-align: left; margin-bottom: 6px; padding: 8px 10px; font-size: 13px; border-radius: 5px; border: 1px solid #ddd; background: #f8f9fa; cursor: pointer; transition: all 0.2s; }
+        .class-sidebar { width: 170px; min-width: 170px; background: white; padding: 10px; border-radius: 8px; border: 1px solid #e0e0e0; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+        .class-sidebar h3 { font-size: 14px; margin-top: 0; margin-bottom: 8px; color: #2c3e50; border-bottom: 2px solid #0366d6; padding-bottom: 4px; }
+        .class-filter-btn { display: block; width: 100%; text-align: left; margin-bottom: 5px; padding: 7px 9px; font-size: 13px; border-radius: 5px; border: 1px solid #ddd; background: #f8f9fa; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
         .class-filter-btn:hover { background-color: #eef5ff; border-color: #70a5e6; }
         .class-filter-btn.active { background-color: #0366d6; color: white; border-color: #0366d6; font-weight: bold; }
-        .table-container { flex: 1; overflow-x: auto; }
+        .table-container { flex: 1; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-        .date-bar { display: flex; gap: 10px; align-items: center; background: #eef5ff; padding: 12px; border-radius: 6px; margin-bottom: 15px; }
+        .date-bar { display: flex; gap: 10px; align-items: center; background: #eef5ff; padding: 10px; border-radius: 6px; margin-bottom: 12px; }
         .date-bar select { margin-bottom: 0; font-weight: bold; color: #0366d6; flex: 1; }
         
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; background: white; }
-        th, td { border: 1px solid #e0e0e0; padding: 8px; text-align: center; }
-        th { background-color: #f8f9fa; color: #495057; }
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 13px; background: white; }
+        th, td { border: 1px solid #e0e0e0; padding: 6px 4px; text-align: center; }
+        th { background-color: #f8f9fa; color: #495057; font-size: 13px; }
 
         /* 放學方式標籤 */
-        .tag-dismiss { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+        .tag-dismiss { display: inline-block; padding: 2px 6px; border-radius: 10px; font-size: 11px; font-weight: bold; }
         .tag-walk { background-color: #e3f2fd; color: #0d47a1; }
         .tag-parent { background-color: #f3e5f5; color: #4a148c; }
         .tag-both { background-color: #e8f5e9; color: #1b5e20; }
@@ -39,41 +39,52 @@
 
         /* 按鈕樣式 */
         .day-toggle-group { display: inline-flex; gap: 2px; }
-        .day-btn { padding: 4px 6px; border: 1px solid #ccc; background: #f8f9fa; cursor: pointer; border-radius: 3px; font-size: 12px; color: #666; margin-bottom: 0; width: auto; }
+        .day-btn { padding: 3px 5px; border: 1px solid #ccc; background: #f8f9fa; cursor: pointer; border-radius: 3px; font-size: 11px; color: #666; margin-bottom: 0; width: auto; }
         .day-btn.selected { background-color: #dc3545; color: white; border-color: #dc3545; font-weight: bold; }
 
         .status-btn-group { display: inline-flex; gap: 3px; }
-        .status-btn { padding: 5px 8px; border: 1px solid #ccc; background: #fff; cursor: pointer; border-radius: 4px; font-size: 12px; margin-bottom: 0; width: auto; }
-        .status-btn.active-present { background-color: #28a745; color: white; border-color: #28a745; font-weight: bold; }
-        .status-btn.active-absent { background-color: #dc3545; color: white; border-color: #dc3545; font-weight: bold; }
-        .status-btn.active-leave { background-color: #ffc107; color: #212529; border-color: #ffc107; font-weight: bold; }
-        .status-btn.active-late { background-color: #17a2b8; color: white; border-color: #17a2b8; font-weight: bold; }
+        .status-btn { padding: 6px 8px; border: 1px solid #ccc; background: #fff; cursor: pointer; border-radius: 4px; font-size: 12px; margin-bottom: 0; width: auto; font-weight: bold; }
+        .status-btn.active-present { background-color: #28a745; color: white; border-color: #28a745; }
+        .status-btn.active-absent { background-color: #dc3545; color: white; border-color: #dc3545; }
+        .status-btn.active-leave { background-color: #ffc107; color: #212529; border-color: #ffc107; }
+        .status-btn.active-late { background-color: #17a2b8; color: white; border-color: #17a2b8; }
 
-        .btn-edit { background-color: #6f42c1; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; width: auto; margin-bottom: 0; }
-        .btn-edit:hover { background-color: #59359a; }
+        .btn-edit { background-color: #6f42c1; color: white; border: none; padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 11px; width: auto; margin-bottom: 0; }
 
-        .summary-info { font-size: 14px; color: #666; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;}
-        .action-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
-        .add-student-btn { background-color: #0366d6; color: white; font-weight: bold; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 13px; width: auto; margin-bottom: 0; }
-        .add-student-btn:hover { background-color: #024ea4; }
+        .summary-info { font-size: 13px; color: #666; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;}
+        .action-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+        .add-student-btn { background-color: #0366d6; color: white; font-weight: bold; border: none; padding: 7px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; width: auto; margin-bottom: 0; }
 
-        .export-btn { background-color: #28a745; color: white; font-weight: bold; border: none; font-size: 16px; margin-top: 15px; cursor: pointer; padding: 12px; }
-        .export-btn:hover { background-color: #218838; }
-        .reset-btn { background-color: #6c757d; color: white; font-weight: bold; border: none; font-size: 13px; padding: 6px 12px; width: auto; margin-bottom: 0; cursor: pointer; }
+        .export-btn { background-color: #28a745; color: white; font-weight: bold; border: none; font-size: 15px; margin-top: 12px; cursor: pointer; padding: 10px; }
+        .reset-btn { background-color: #6c757d; color: white; font-weight: bold; border: none; font-size: 12px; padding: 5px 10px; width: auto; margin-bottom: 0; cursor: pointer; }
         .save-tag { font-size: 12px; color: #28a745; font-weight: bold; display: none; }
-        .tips { color: #555; font-size: 13px; line-height: 1.5; background: #eef5ff; padding: 10px; border-radius: 5px; margin-top: 5px; }
+        .tips { color: #555; font-size: 12px; line-height: 1.4; background: #eef5ff; padding: 8px; border-radius: 5px; margin-top: 5px; }
 
         /* Modal 彈出視窗 */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
-        .modal-box { background: white; padding: 20px; border-radius: 8px; width: 380px; max-width: 90%; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
-        .modal-box h3 { margin-top: 0; color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-        .checkbox-group { display: flex; gap: 15px; margin-bottom: 15px; align-items: center; }
+        .modal-box { background: white; padding: 18px; border-radius: 8px; width: 340px; max-width: 90%; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        .modal-box h3 { margin-top: 0; color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 8px; font-size: 16px; }
+        .checkbox-group { display: flex; gap: 15px; margin-bottom: 12px; align-items: center; }
         .checkbox-group label { font-weight: normal; margin-bottom: 0; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
         .checkbox-group input { width: auto; margin-bottom: 0; }
-        .modal-btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 15px; }
-        .modal-btns button { width: auto; padding: 8px 15px; margin-bottom: 0; font-size: 14px; cursor: pointer; }
+        .modal-btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
+        .modal-btns button { width: auto; padding: 6px 12px; margin-bottom: 0; font-size: 13px; cursor: pointer; }
         .btn-confirm { background-color: #28a745; color: white; border: none; font-weight: bold; }
         .btn-cancel { background-color: #6c757d; color: white; border: none; }
+
+        /* 手機流動裝置響應式優化 (Mobile Responsive) */
+        @media (max-width: 768px) {
+            body { padding: 8px; }
+            .card { padding: 10px; }
+            .workspace-layout { flex-direction: column; gap: 10px; }
+            .class-sidebar { width: 100%; min-width: 100%; box-sizing: border-box; padding: 8px; }
+            .class-sidebar h3 { font-size: 13px; margin-bottom: 5px; }
+            #classSidebarList { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 5px; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+            .class-filter-btn { width: auto; flex: 0 0 auto; margin-bottom: 0; font-size: 12px; padding: 5px 10px; }
+            th, td { padding: 5px 2px; }
+            .status-btn { padding: 5px 6px; font-size: 11px; }
+            .day-btn { padding: 2px 3px; font-size: 10px; }
+        }
     </style>
 </head>
 <body>
@@ -85,52 +96,52 @@
         <label for="excelFile">1. 匯入 Excel 點名紙：</label>
         <input type="file" id="excelFile" accept=".xlsx, .xls" multiple>
         <div class="tips">
-            🔍 <b>搜尋與排序優化：</b> 左側新增班別快速篩選，支援手動新增/編輯學生，系統自動依「班別 ➔ 學號」精準排序。
+            📱 <b>手機優化：</b>「當日點名狀態」已前移，班別搜尋改為橫向滑動列，大幅減少滑動操作。
         </div>
     </div>
 
     <!-- 點名工作區 -->
     <div id="appWorkspace" style="display: none;">
-        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
         
         <div class="control-group">
             <label>2. 選擇訓練日期進行點名：</label>
             <div class="date-bar">
                 <select id="dateSelect"></select>
-                <span id="weekdayTag" style="font-weight: bold; color: #555; min-width: 70px;"></span>
+                <span id="weekdayTag" style="font-weight: bold; color: #555; min-width: 65px;"></span>
             </div>
         </div>
 
         <div class="summary-info">
-            <div>訓練項目：<strong id="activityDisplay" style="color:#0366d6;">-</strong> | 總人數：<strong id="studentCount">0</strong> 人</div>
+            <div>訓練項目：<strong id="activityDisplay" style="color:#0366d6;">-</strong> | 人數：<strong id="studentCount">0</strong></div>
             <div>
                 <span id="saveStatus" class="save-tag">✓ 已自動儲存</span>
-                <button type="button" class="reset-btn" id="resetBtn">清除資料 / 重新匯入</button>
+                <button type="button" class="reset-btn" id="resetBtn">清除重匯</button>
             </div>
         </div>
 
         <div class="action-bar">
-            <button type="button" class="add-student-btn" onclick="openStudentModal(-1)">➕ 新增學生資料</button>
+            <button type="button" class="add-student-btn" onclick="openStudentModal(-1)">➕ 新增學生</button>
         </div>
 
         <div class="workspace-layout">
-            <!-- 左側班別快速篩選 -->
+            <!-- 左側/頂部 班別快速搜尋標籤 -->
             <div class="class-sidebar">
-                <h3>🔍 班別快速搜尋</h3>
+                <h3>🔍 班別快速篩選</h3>
                 <div id="classSidebarList"></div>
             </div>
 
-            <!-- 右側表格 -->
+            <!-- 表格區：當日點名狀態已調整至個人固定缺席日之前 -->
             <div class="table-container">
                 <table>
                     <thead>
                         <tr>
-                            <th style="width: 7%;">班別</th>
-                            <th style="width: 7%;">學號</th>
+                            <th style="width: 6%;">班別</th>
+                            <th style="width: 6%;">學號</th>
                             <th style="width: 14%;">學生姓名</th>
-                            <th style="width: 11%;">放學方式</th>
-                            <th style="width: 25%;">個人固定缺席日</th>
-                            <th style="width: 28%;">當日點名狀態</th>
+                            <th style="width: 10%;">放學方式</th>
+                            <th style="width: 30%;">當日點名狀態</th> <!-- 欄位互調：提早顯示 -->
+                            <th style="width: 26%;">個人固定缺席日</th> <!-- 欄位互調：移至後方 -->
                             <th style="width: 8%;">操作</th>
                         </tr>
                     </thead>
@@ -183,8 +194,8 @@
     let dateList = [];        
     let activityName = "";    
     let attendanceMap = {};   
-    let currentClassFilter = "ALL"; // 班別篩選狀態
-    let editingStudentIndex = -1;  // -1 代表新增，>=0 代表編輯
+    let currentClassFilter = "ALL"; 
+    let editingStudentIndex = -1;  
 
     const weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
     const weekdayLabels = [
@@ -197,7 +208,7 @@
         { num: 0, label: "日" }
     ];
 
-    const LOCAL_STORAGE_KEY = "SMART_ROLLCALL_DATA_V7";
+    const LOCAL_STORAGE_KEY = "SMART_ROLLCALL_DATA_V8";
 
     const excelFileInput = document.getElementById('excelFile');
     const appWorkspace = document.getElementById('appWorkspace');
@@ -226,7 +237,6 @@
         return val.toString().trim().replace(/[\r\n]+/g, ' ');
     }
 
-    // 自動依「班別 ➔ 學號」排序學生
     function sortStudents() {
         rawStudents.sort((a, b) => {
             const cComp = (a.class || "").localeCompare(b.class || "", 'zh-HK', { numeric: true });
@@ -402,18 +412,16 @@
         autoSave();
     });
 
-    // 渲染左側班別快速搜尋選單
     function renderClassSidebar() {
         classSidebarList.innerHTML = "";
 
         const classes = Array.from(new Set(rawStudents.map(s => s.class).filter(c => c)))
                              .sort((a, b) => a.localeCompare(b, 'zh-HK', { numeric: true }));
 
-        // 全部班別按鈕
         const allBtn = document.createElement('button');
         allBtn.type = 'button';
         allBtn.className = `class-filter-btn ${currentClassFilter === 'ALL' ? 'active' : ''}`;
-        allBtn.textContent = `全部班別 (${rawStudents.length})`;
+        allBtn.textContent = `全部 (${rawStudents.length})`;
         allBtn.onclick = () => {
             currentClassFilter = 'ALL';
             renderClassSidebar();
@@ -422,13 +430,12 @@
         };
         classSidebarList.appendChild(allBtn);
 
-        // 各班別按鈕
         classes.forEach(cName => {
             const count = rawStudents.filter(s => s.class === cName).length;
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = `class-filter-btn ${currentClassFilter === cName ? 'active' : ''}`;
-            btn.textContent = `${cName} (${count}人)`;
+            btn.textContent = `${cName} (${count})`;
             btn.onclick = () => {
                 currentClassFilter = cName;
                 renderClassSidebar();
@@ -476,7 +483,6 @@
 
         studentTableBody.innerHTML = "";
 
-        // 依班別快速過濾
         const filteredStudents = currentClassFilter === 'ALL' 
             ? rawStudents 
             : rawStudents.filter(s => s.class === currentClassFilter);
@@ -512,24 +518,7 @@
             spanDismiss.textContent = student.dismissMethod;
             tdDismiss.appendChild(spanDismiss);
 
-            // 5. 個人固定缺席日
-            const tdFixed = document.createElement('td');
-            const dayGroup = document.createElement('div');
-            dayGroup.className = 'day-toggle-group';
-
-            weekdayLabels.forEach(w => {
-                const dayBtn = document.createElement('button');
-                dayBtn.type = 'button';
-                dayBtn.className = `day-btn ${fixedDays.includes(w.num) ? 'selected' : ''}`;
-                dayBtn.textContent = w.label;
-                dayBtn.dataset.action = 'toggle-fixed-day';
-                dayBtn.dataset.student = student.name;
-                dayBtn.dataset.dayNum = w.num;
-                dayGroup.appendChild(dayBtn);
-            });
-            tdFixed.appendChild(dayGroup);
-
-            // 6. 當日點名狀態
+            // 5. 當日點名狀態 (順序前移：方便手機操作)
             const tdStatus = document.createElement('td');
             const statusGroup = document.createElement('div');
             statusGroup.className = 'status-btn-group';
@@ -553,7 +542,24 @@
             });
             tdStatus.appendChild(statusGroup);
 
-            // 7. 操作 (編輯按鈕)
+            // 6. 個人固定缺席日 (順序後移)
+            const tdFixed = document.createElement('td');
+            const dayGroup = document.createElement('div');
+            dayGroup.className = 'day-toggle-group';
+
+            weekdayLabels.forEach(w => {
+                const dayBtn = document.createElement('button');
+                dayBtn.type = 'button';
+                dayBtn.className = `day-btn ${fixedDays.includes(w.num) ? 'selected' : ''}`;
+                dayBtn.textContent = w.label;
+                dayBtn.dataset.action = 'toggle-fixed-day';
+                dayBtn.dataset.student = student.name;
+                dayBtn.dataset.dayNum = w.num;
+                dayGroup.appendChild(dayBtn);
+            });
+            tdFixed.appendChild(dayGroup);
+
+            // 7. 操作
             const tdAction = document.createElement('td');
             const editBtn = document.createElement('button');
             editBtn.type = 'button';
@@ -563,12 +569,13 @@
             editBtn.dataset.student = student.name;
             tdAction.appendChild(editBtn);
 
+            // 插入 DOM 節點 (當日點名狀態位於第 5 欄)
             tr.appendChild(tdClass);
             tr.appendChild(tdId);
             tr.appendChild(tdName);
             tr.appendChild(tdDismiss);
-            tr.appendChild(tdFixed);
             tr.appendChild(tdStatus);
+            tr.appendChild(tdFixed);
             tr.appendChild(tdAction);
 
             studentTableBody.appendChild(tr);
@@ -605,7 +612,6 @@
         autoSave();
     }
 
-    /* Modal 控制與學生新增/編輯邏輯 */
     function openStudentModal(index = -1) {
         editingStudentIndex = index;
         const modal = document.getElementById('studentModal');
@@ -652,7 +658,6 @@
         else if (isParent) dismissType = "家長";
 
         if (editingStudentIndex === -1) {
-            // 新增學生檢查重名
             if (rawStudents.some(s => s.name === nameVal)) {
                 alert("已存在相同姓名的學生！");
                 return;
@@ -671,11 +676,9 @@
                 attendanceMap[`${d}_${nameVal}`] = "出席";
             });
         } else {
-            // 編輯學生
             const oldStudent = rawStudents[editingStudentIndex];
             const oldName = oldStudent.name;
 
-            // 若改名，轉移點名紀錄
             if (oldName !== nameVal) {
                 dateList.forEach(d => {
                     if (attendanceMap[`${d}_${oldName}`]) {
