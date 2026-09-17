@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能點名系統 (多選固定缺席日版)</title>
+    <title>智能點名系統 (按鈕修復與安全事件處理版)</title>
     <!-- 引入 SheetJS 處理 Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
@@ -23,12 +23,12 @@
 
         /* 星期幾多選按鈕組 */
         .day-toggle-group { display: inline-flex; gap: 2px; }
-        .day-btn { padding: 4px 7px; border: 1px solid #ccc; background: #f8f9fa; cursor: pointer; border-radius: 3px; font-size: 12px; color: #666; margin-bottom: 0; width: auto; }
+        .day-btn { padding: 5px 8px; border: 1px solid #ccc; background: #f8f9fa; cursor: pointer; border-radius: 3px; font-size: 12px; color: #666; margin-bottom: 0; width: auto; }
         .day-btn.selected { background-color: #dc3545; color: white; border-color: #dc3545; font-weight: bold; }
 
         /* 狀態按鈕組 */
         .status-btn-group { display: inline-flex; gap: 4px; }
-        .status-btn { padding: 5px 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; border-radius: 4px; font-size: 13px; margin-bottom: 0; width: auto; }
+        .status-btn { padding: 6px 11px; border: 1px solid #ccc; background: #fff; cursor: pointer; border-radius: 4px; font-size: 13px; margin-bottom: 0; width: auto; }
         .status-btn.active-present { background-color: #28a745; color: white; border-color: #28a745; font-weight: bold; }
         .status-btn.active-absent { background-color: #dc3545; color: white; border-color: #dc3545; font-weight: bold; }
         .status-btn.active-leave { background-color: #ffc107; color: #212529; border-color: #ffc107; font-weight: bold; }
@@ -52,7 +52,7 @@
         <label for="excelFile">1. 匯入 Excel 點名紙：</label>
         <input type="file" id="excelFile" accept=".xlsx, .xls" multiple>
         <div class="tips">
-            💡 <b>多選固定缺席日：</b> 點擊學生旁的「一、二、三...」按鈕可多選固定缺席日（紅底代表已設為缺席日）。
+            ✅ <b>按鈕相容性優化：</b> 已採用安全事件監聽，支援直接點擊切換點名狀態與多選固定缺席日。
         </div>
     </div>
 
@@ -72,7 +72,7 @@
             <div>訓練項目：<strong id="activityDisplay" style="color:#0366d6;">-</strong> | 學生總數：<strong id="studentCount">0</strong> 人</div>
             <div>
                 <span id="saveStatus" class="save-tag">✓ 已自動儲存</span>
-                <button class="reset-btn" id="resetBtn">清除資料 / 重新匯入</button>
+                <button type="button" class="reset-btn" id="resetBtn">清除資料 / 重新匯入</button>
             </div>
         </div>
 
@@ -91,15 +91,15 @@
             </table>
         </div>
 
-        <button class="export-btn" id="exportBtn">匯出原格式 Excel 點名紙</button>
+        <button type="button" class="export-btn" id="exportBtn">匯出原格式 Excel 點名紙</button>
     </div>
 </div>
 
 <script>
-    let rawStudents = [];     // 學生名單 [{class, studentId, name, fixedAbsentDays: []}]
-    let dateList = [];        // 日期清單
-    let activityName = "";    // 活動名稱
-    let attendanceMap = {};   // 點名紀錄 map
+    let rawStudents = [];     
+    let dateList = [];        
+    let activityName = "";    
+    let attendanceMap = {};   
 
     const weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
     const weekdayLabels = [
@@ -112,7 +112,7 @@
         { num: 0, label: "日" }
     ];
 
-    const LOCAL_STORAGE_KEY = "SMART_ROLLCALL_DATA_V3";
+    const LOCAL_STORAGE_KEY = "SMART_ROLLCALL_DATA_V4";
 
     const excelFileInput = document.getElementById('excelFile');
     const appWorkspace = document.getElementById('appWorkspace');
@@ -124,6 +124,12 @@
     const saveStatus = document.getElementById('saveStatus');
 
     window.addEventListener('DOMContentLoaded', loadDataFromStorage);
+
+    // 安全清理字串
+    function sanitizeStr(val) {
+        if (val === null || val === undefined) return "";
+        return val.toString().trim().replace(/[\r\n]+/g, ' ');
+    }
 
     function autoSave() {
         const storeObj = {
@@ -192,14 +198,14 @@
                     const aoa = XLSX.utils.sheet_to_json(worksheet, {header: 1, raw: false, dateNF: 'yyyy-mm-dd'});
 
                     if (index === 0) {
-                        primaryActivityName = (aoa[2] && aoa[2][0]) ? aoa[2][0] : "訓練活動";
+                        primaryActivityName = (aoa[2] && aoa[2][0]) ? sanitizeStr(aoa[2][0]) : "訓練活動";
                     }
 
                     const dateRow = aoa[3] || [];
                     let fileDates = [];
                     for (let col = 8; col < dateRow.length; col++) {
-                        if (dateRow[col] && dateRow[col].toString().trim() !== "") {
-                            const dVal = dateRow[col].toString().trim();
+                        const dVal = sanitizeStr(dateRow[col]);
+                        if (dVal !== "") {
                             allDatesSet.add(dVal);
                             fileDates[col] = dVal;
                         }
@@ -207,21 +213,21 @@
 
                     for (let r = 4; r < aoa.length; r++) {
                         if (aoa[r] && aoa[r][3]) {
-                            const sName = aoa[r][3].toString().trim();
-                            if (sName) {
+                            const sName = sanitizeStr(aoa[r][3]);
+                            if (sName !== "") {
                                 if (!studentMap.has(sName)) {
                                     studentMap.set(sName, {
-                                        class: aoa[r][1] || "",
-                                        studentId: aoa[r][2] || "",
+                                        class: sanitizeStr(aoa[r][1]),
+                                        studentId: sanitizeStr(aoa[r][2]),
                                         name: sName,
-                                        fixedAbsentDays: [] // 支援多選陣列
+                                        fixedAbsentDays: []
                                     });
                                 }
 
                                 for (let col = 8; col < dateRow.length; col++) {
                                     const dVal = fileDates[col];
                                     if (dVal) {
-                                        const statusVal = aoa[r][col] ? aoa[r][col].toString().trim() : "出席";
+                                        const statusVal = sanitizeStr(aoa[r][col]) || "出席";
                                         importedAttendance[`${dVal}_${sName}`] = statusVal;
                                     }
                                 }
@@ -271,6 +277,30 @@
         autoSave();
     });
 
+    // 表格按鈕事件委派監聽 (避免字串轉義導致的點擊無效)
+    studentTableBody.addEventListener('click', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+
+        const action = btn.dataset.action;
+        const studentName = btn.dataset.student;
+
+        if (action === 'set-status') {
+            const status = btn.dataset.status;
+            const selectedDate = dateSelect.value;
+            if (selectedDate && studentName) {
+                attendanceMap[`${selectedDate}_${studentName}`] = status;
+                renderRollCallTable();
+                autoSave();
+            }
+        } else if (action === 'toggle-fixed-day') {
+            const dayNum = parseInt(btn.dataset.dayNum);
+            if (studentName && !isNaN(dayNum)) {
+                toggleStudentFixedAbsent(studentName, dayNum);
+            }
+        }
+    });
+
     function renderRollCallTable() {
         const selectedDate = dateSelect.value;
         if (!selectedDate) return;
@@ -287,38 +317,72 @@
             const fixedDays = student.fixedAbsentDays || [];
             const tr = document.createElement('tr');
 
-            // 建立 7 個星期的多選按鈕 HTML
-            let dayBtnsHtml = `<div class="day-toggle-group">`;
+            // 1. 班別
+            const tdClass = document.createElement('td');
+            tdClass.textContent = student.class;
+
+            // 2. 學號
+            const tdId = document.createElement('td');
+            tdId.textContent = student.studentId;
+
+            // 3. 姓名
+            const tdName = document.createElement('td');
+            const strongName = document.createElement('strong');
+            strongName.textContent = student.name;
+            tdName.appendChild(strongName);
+
+            // 4. 個人固定缺席日 (多選按鈕)
+            const tdFixed = document.createElement('td');
+            const dayGroup = document.createElement('div');
+            dayGroup.className = 'day-toggle-group';
+
             weekdayLabels.forEach(w => {
-                const isSelected = fixedDays.includes(w.num);
-                dayBtnsHtml += `
-                    <button class="day-btn ${isSelected ? 'selected' : ''}" 
-                            onclick="toggleStudentFixedAbsent('${student.name}', ${w.num})">
-                        ${w.label}
-                    </button>`;
+                const dayBtn = document.createElement('button');
+                dayBtn.type = 'button';
+                dayBtn.className = `day-btn ${fixedDays.includes(w.num) ? 'selected' : ''}`;
+                dayBtn.textContent = w.label;
+                dayBtn.dataset.action = 'toggle-fixed-day';
+                dayBtn.dataset.student = student.name;
+                dayBtn.dataset.dayNum = w.num;
+                dayGroup.appendChild(dayBtn);
             });
-            dayBtnsHtml += `</div>`;
-            
-            tr.innerHTML = `
-                <td>${student.class}</td>
-                <td>${student.studentId}</td>
-                <td><strong>${student.name}</strong></td>
-                <td>${dayBtnsHtml}</td>
-                <td>
-                    <div class="status-btn-group">
-                        <button class="status-btn ${currentStatus === '出席' ? 'active-present' : ''}" onclick="setStatus('${selectedDate}', '${student.name}', '出席')">出席</button>
-                        <button class="status-btn ${currentStatus === '缺席' ? 'active-absent' : ''}" onclick="setStatus('${selectedDate}', '${student.name}', '缺席')">缺席</button>
-                        <button class="status-btn ${currentStatus === '請假' ? 'active-leave' : ''}" onclick="setStatus('${selectedDate}', '${student.name}', '請假')">請假</button>
-                        <button class="status-btn ${currentStatus === '遲到' ? 'active-late' : ''}" onclick="setStatus('${selectedDate}', '${student.name}', '遲到')">遲到</button>
-                    </div>
-                </td>
-            `;
+            tdFixed.appendChild(dayGroup);
+
+            // 5. 點名狀態按鈕
+            const tdStatus = document.createElement('td');
+            const statusGroup = document.createElement('div');
+            statusGroup.className = 'status-btn-group';
+
+            const statusOptions = [
+                { name: '出席', cls: 'active-present' },
+                { name: '缺席', cls: 'active-absent' },
+                { name: '請假', cls: 'active-leave' },
+                { name: '遲到', cls: 'active-late' }
+            ];
+
+            statusOptions.forEach(opt => {
+                const sBtn = document.createElement('button');
+                sBtn.type = 'button';
+                sBtn.className = `status-btn ${currentStatus === opt.name ? opt.cls : ''}`;
+                sBtn.textContent = opt.name;
+                sBtn.dataset.action = 'set-status';
+                sBtn.dataset.student = student.name;
+                sBtn.dataset.status = opt.name;
+                statusGroup.appendChild(sBtn);
+            });
+            tdStatus.appendChild(statusGroup);
+
+            tr.appendChild(tdClass);
+            tr.appendChild(tdId);
+            tr.appendChild(tdName);
+            tr.appendChild(tdFixed);
+            tr.appendChild(tdStatus);
+
             studentTableBody.appendChild(tr);
         });
     }
 
-    // 切換學生的固定缺席日 (按一次開啟、再按一次關閉)
-    window.toggleStudentFixedAbsent = function(studentName, dayNum) {
+    function toggleStudentFixedAbsent(studentName, dayNum) {
         const student = rawStudents.find(s => s.name === studentName);
         if (!student) return;
 
@@ -328,12 +392,11 @@
 
         const idx = student.fixedAbsentDays.indexOf(dayNum);
         if (idx > -1) {
-            student.fixedAbsentDays.splice(idx, 1); // 取消選擇
+            student.fixedAbsentDays.splice(idx, 1);
         } else {
-            student.fixedAbsentDays.push(dayNum); // 加入選擇
+            student.fixedAbsentDays.push(dayNum);
         }
 
-        // 重新套用至該學生所有符合這些星期的訓練日
         dateList.forEach(d => {
             const dObj = new Date(d);
             if (!isNaN(dObj)) {
@@ -341,7 +404,6 @@
                 if (student.fixedAbsentDays.includes(wDay)) {
                     attendanceMap[`${d}_${studentName}`] = "缺席";
                 } else if (attendanceMap[`${d}_${studentName}`] === "缺席") {
-                    // 若原本因規則標記為缺席，取消後預設恢復為出席
                     attendanceMap[`${d}_${studentName}`] = "出席";
                 }
             }
@@ -349,13 +411,7 @@
 
         renderRollCallTable();
         autoSave();
-    };
-
-    window.setStatus = function(date, studentName, status) {
-        attendanceMap[`${date}_${studentName}`] = status;
-        renderRollCallTable();
-        autoSave();
-    };
+    }
 
     document.getElementById('resetBtn').addEventListener('click', () => {
         if (confirm("確定要清除目前的資料並重新匯入檔案嗎？")) {
@@ -371,15 +427,12 @@
         aoaData.push([]);
         aoaData.push([]);
 
-        // Row 3: A3 填寫活動名稱
         aoaData.push([activityName]);
 
-        // Row 4: 表頭
         let headerRow = ["", "班別", "學號", "學生姓名", "", "", "", ""];
         dateList.forEach(d => headerRow.push(d));
         aoaData.push(headerRow);
 
-        // Row 5+: 學生與點名矩陣
         rawStudents.forEach(student => {
             let row = ["", student.class, student.studentId, student.name, "", "", "", ""];
             dateList.forEach(d => {
