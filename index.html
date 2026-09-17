@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能點名系統 (邏輯修復版)</title>
+    <title>智能點名系統 (含放學方式)</title>
     <!-- 引入 SheetJS 處理 Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 1050px; margin: 0 auto; background-color: #f4f6f9; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 1100px; margin: 0 auto; background-color: #f4f6f9; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
         h1 { color: #2c3e50; text-align: center; margin-top: 0; }
         .control-group { margin-bottom: 15px; }
@@ -21,14 +21,21 @@
         th, td { border: 1px solid #e0e0e0; padding: 8px; text-align: center; }
         th { background-color: #f8f9fa; color: #495057; }
 
+        /* 放學方式標籤 */
+        .tag-dismiss { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+        .tag-walk { background-color: #e3f2fd; color: #0d47a1; }
+        .tag-parent { background-color: #f3e5f5; color: #4a148c; }
+        .tag-both { background-color: #e8f5e9; color: #1b5e20; }
+        .tag-none { background-color: #f5f5f5; color: #757575; }
+
         /* 星期幾多選按鈕組 */
         .day-toggle-group { display: inline-flex; gap: 2px; }
-        .day-btn { padding: 5px 8px; border: 1px solid #ccc; background: #f8f9fa; cursor: pointer; border-radius: 3px; font-size: 12px; color: #666; margin-bottom: 0; width: auto; }
+        .day-btn { padding: 4px 7px; border: 1px solid #ccc; background: #f8f9fa; cursor: pointer; border-radius: 3px; font-size: 12px; color: #666; margin-bottom: 0; width: auto; }
         .day-btn.selected { background-color: #dc3545; color: white; border-color: #dc3545; font-weight: bold; }
 
         /* 狀態按鈕組 */
         .status-btn-group { display: inline-flex; gap: 4px; }
-        .status-btn { padding: 6px 11px; border: 1px solid #ccc; background: #fff; cursor: pointer; border-radius: 4px; font-size: 13px; margin-bottom: 0; width: auto; }
+        .status-btn { padding: 5px 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; border-radius: 4px; font-size: 13px; margin-bottom: 0; width: auto; }
         .status-btn.active-present { background-color: #28a745; color: white; border-color: #28a745; font-weight: bold; }
         .status-btn.active-absent { background-color: #dc3545; color: white; border-color: #dc3545; font-weight: bold; }
         .status-btn.active-leave { background-color: #ffc107; color: #212529; border-color: #ffc107; font-weight: bold; }
@@ -52,7 +59,7 @@
         <label for="excelFile">1. 匯入 Excel 點名紙：</label>
         <input type="file" id="excelFile" accept=".xlsx, .xls" multiple>
         <div class="tips">
-            🔧 <b>修復完成：</b> 點擊個人固定缺席日（一至日）時，僅會針對屬於該星期的訓練日更新點名狀態。
+            🚌 <b>新增放學方式欄位：</b> 自動讀取 Excel 的 <b>F欄 (先行)</b> 與 <b>G欄 (家長)</b>，並在匯出時保留格式。
         </div>
     </div>
 
@@ -80,11 +87,12 @@
             <table>
                 <thead>
                     <tr>
-                        <th style="width: 8%;">班別</th>
-                        <th style="width: 8%;">學號</th>
-                        <th style="width: 16%;">學生姓名</th>
-                        <th style="width: 32%;">個人固定缺席日 (可多選)</th>
-                        <th style="width: 36%;">當日點名狀態</th>
+                        <th style="width: 7%;">班別</th>
+                        <th style="width: 7%;">學號</th>
+                        <th style="width: 15%;">學生姓名</th>
+                        <th style="width: 12%;">放學方式</th>
+                        <th style="width: 27%;">個人固定缺席日 (可多選)</th>
+                        <th style="width: 32%;">當日點名狀態</th>
                     </tr>
                 </thead>
                 <tbody id="studentTableBody"></tbody>
@@ -112,7 +120,7 @@
         { num: 0, label: "日" }
     ];
 
-    const LOCAL_STORAGE_KEY = "SMART_ROLLCALL_DATA_V5";
+    const LOCAL_STORAGE_KEY = "SMART_ROLLCALL_DATA_V6";
 
     const excelFileInput = document.getElementById('excelFile');
     const appWorkspace = document.getElementById('appWorkspace');
@@ -125,7 +133,6 @@
 
     window.addEventListener('DOMContentLoaded', loadDataFromStorage);
 
-    // 安全解析日期字串（防止跨時區日期偏差）
     function getDayOfWeek(dateStr) {
         if (!dateStr) return -1;
         const parts = dateStr.replace(/\//g, '-').split('-').map(p => parseInt(p, 10));
@@ -225,11 +232,26 @@
                         if (aoa[r] && aoa[r][3]) {
                             const sName = sanitizeStr(aoa[r][3]);
                             if (sName !== "") {
+                                // 讀取 F 欄 (索引5: 先行) 與 G 欄 (索引6: 家長)
+                                const valWalk = sanitizeStr(aoa[r][5]);
+                                const valParent = sanitizeStr(aoa[r][6]);
+
+                                let dismissType = "未註明";
+                                const isWalk = valWalk !== "" && valWalk !== "0";
+                                const isParent = valParent !== "" && valParent !== "0";
+
+                                if (isWalk && isParent) dismissType = "先行/家長";
+                                else if (isWalk) dismissType = "先行";
+                                else if (isParent) dismissType = "家長";
+
                                 if (!studentMap.has(sName)) {
                                     studentMap.set(sName, {
                                         class: sanitizeStr(aoa[r][1]),
                                         studentId: sanitizeStr(aoa[r][2]),
                                         name: sName,
+                                        dismissMethod: dismissType,
+                                        hasWalk: isWalk,
+                                        hasParent: isParent,
                                         fixedAbsentDays: []
                                     });
                                 }
@@ -287,7 +309,6 @@
         autoSave();
     });
 
-    // 表格按鈕點擊委派監聽
     studentTableBody.addEventListener('click', (e) => {
         const btn = e.target.closest('button');
         if (!btn) return;
@@ -341,7 +362,19 @@
             strongName.textContent = student.name;
             tdName.appendChild(strongName);
 
-            // 4. 個人固定缺席日 (多選按鈕)
+            // 4. 放學方式 (獨立欄位)
+            const tdDismiss = document.createElement('td');
+            const spanDismiss = document.createElement('span');
+            let methodCls = 'tag-none';
+            if (student.dismissMethod === '先行') methodCls = 'tag-walk';
+            else if (student.dismissMethod === '家長') methodCls = 'tag-parent';
+            else if (student.dismissMethod.includes('/')) methodCls = 'tag-both';
+            
+            spanDismiss.className = `tag-dismiss ${methodCls}`;
+            spanDismiss.textContent = student.dismissMethod;
+            tdDismiss.appendChild(spanDismiss);
+
+            // 5. 個人固定缺席日
             const tdFixed = document.createElement('td');
             const dayGroup = document.createElement('div');
             dayGroup.className = 'day-toggle-group';
@@ -358,7 +391,7 @@
             });
             tdFixed.appendChild(dayGroup);
 
-            // 5. 點名狀態按鈕
+            // 6. 當日點名狀態
             const tdStatus = document.createElement('td');
             const statusGroup = document.createElement('div');
             statusGroup.className = 'status-btn-group';
@@ -385,6 +418,7 @@
             tr.appendChild(tdClass);
             tr.appendChild(tdId);
             tr.appendChild(tdName);
+            tr.appendChild(tdDismiss);
             tr.appendChild(tdFixed);
             tr.appendChild(tdStatus);
 
@@ -392,7 +426,6 @@
         });
     }
 
-    // 精準切換固定缺席日
     function toggleStudentFixedAbsent(studentName, dayNum) {
         const student = rawStudents.find(s => s.name === studentName);
         if (!student) return;
@@ -405,14 +438,13 @@
         let isNowAdded = false;
 
         if (idx > -1) {
-            student.fixedAbsentDays.splice(idx, 1); // 取消此星期的固定缺席
+            student.fixedAbsentDays.splice(idx, 1);
             isNowAdded = false;
         } else {
-            student.fixedAbsentDays.push(dayNum); // 設定此星期的固定缺席
+            student.fixedAbsentDays.push(dayNum);
             isNowAdded = true;
         }
 
-        // 【精準修改】：只更新屬於該星期幾 (dayNum) 的訓練日，絕不影響其他星期的日期狀態！
         dateList.forEach(d => {
             const wDay = getDayOfWeek(d);
             if (wDay === dayNum) {
@@ -431,21 +463,27 @@
         }
     });
 
-    // 匯出原格式 Excel 矩陣
+    // 匯出原格式 Excel (含 F欄: 先行, G欄: 家長)
     document.getElementById('exportBtn').addEventListener('click', () => {
         let aoaData = [];
 
         aoaData.push([]);
         aoaData.push([]);
 
+        // Row 3: A3 填寫活動名稱
         aoaData.push([activityName]);
 
-        let headerRow = ["", "班別", "學號", "學生姓名", "", "", "", ""];
+        // Row 4: 表頭 (F4: 先行, G4: 家長)
+        let headerRow = ["", "班別", "學號", "學生姓名", "", "先行", "家長", ""];
         dateList.forEach(d => headerRow.push(d));
         aoaData.push(headerRow);
 
+        // Row 5+: 學生與點名矩陣
         rawStudents.forEach(student => {
-            let row = ["", student.class, student.studentId, student.name, "", "", "", ""];
+            const walkMark = student.hasWalk ? "✓" : "";
+            const parentMark = student.hasParent ? "✓" : "";
+            
+            let row = ["", student.class, student.studentId, student.name, "", walkMark, parentMark, ""];
             dateList.forEach(d => {
                 let status = attendanceMap[`${d}_${student.name}`] || "出席";
                 row.push(status);
