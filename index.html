@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能點名系統 (全動態修復版)</title>
+    <title>智能點名系統 (全動態修復 + 圖片辨識版)</title>
     <!-- 引入 SheetJS 處理 Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- 引入 Tesseract.js 處理圖片 OCR -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 15px; max-width: 1200px; margin: 0 auto; background-color: #f4f6f9; }
         .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 15px; }
@@ -52,13 +54,19 @@
         .btn-edit { background-color: #6f42c1; color: white; border: none; padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 11px; width: auto; margin-bottom: 0; }
 
         .summary-info { font-size: 13px; color: #666; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;}
-        .action-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+        .action-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;}
         .add-student-btn { background-color: #0366d6; color: white; font-weight: bold; border: none; padding: 7px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; width: auto; margin-bottom: 0; }
 
         .export-btn { background-color: #28a745; color: white; font-weight: bold; border: none; font-size: 15px; margin-top: 12px; cursor: pointer; padding: 10px; }
         .reset-btn { background-color: #6c757d; color: white; font-weight: bold; border: none; font-size: 12px; padding: 5px 10px; width: auto; margin-bottom: 0; cursor: pointer; }
+        
         .save-tag { font-size: 12px; color: #28a745; font-weight: bold; display: none; }
         .tips { color: #555; font-size: 12px; line-height: 1.4; background: #eef5ff; padding: 8px; border-radius: 5px; margin-top: 5px; }
+
+        /* OCR UI 樣式 */
+        .ocr-section { background: #fcf8e3; padding: 12px; border-radius: 6px; border: 1px solid #faebcc; margin-bottom: 12px; }
+        .ocr-status { font-size: 13px; font-weight: bold; margin-top: 5px; display: none; }
+        .ocr-file-input { margin-bottom: 0 !important; background: white; }
 
         /* Modal 彈出視窗 */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
@@ -116,6 +124,16 @@
             <div>
                 <span id="saveStatus" class="save-tag">✓ 已自動儲存</span>
                 <button type="button" class="reset-btn" id="resetBtn">清除重匯</button>
+            </div>
+        </div>
+
+        <!-- 圖片上載 OCR 區塊 -->
+        <div class="ocr-section">
+            <label for="imageUpload">📸 3. 自動辨識缺席名單 (上載圖片)：</label>
+            <input type="file" id="imageUpload" class="ocr-file-input" accept="image/*" multiple>
+            <div id="ocrStatus" class="ocr-status"></div>
+            <div class="tips" style="background: transparent; padding: 0; margin-top: 4px; color: #8a6d3b;">
+                💡 支援多次上載，可選取多張圖片。系統會讀取圖片文字，若與系統姓名匹配，將於<b>當日自動標記為缺席</b>。首次辨識需載入語系模組，請稍候。
             </div>
         </div>
 
@@ -217,6 +235,9 @@
     const saveStatus = document.getElementById('saveStatus');
     const classSidebarList = document.getElementById('classSidebarList');
 
+    const imageUpload = document.getElementById('imageUpload');
+    const ocrStatus = document.getElementById('ocrStatus');
+
     window.addEventListener('DOMContentLoaded', loadDataFromStorage);
 
     function sanitizeStr(val) {
@@ -224,7 +245,6 @@
         return val.toString().trim().replace(/[\r\n]+/g, ' ');
     }
 
-    // 標準化日期解析：解決 Excel 轉換、物件或格式差異
     function formatDateCell(val) {
         if (val === null || val === undefined) return "";
         
@@ -347,7 +367,6 @@
                     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
                     const aoa = XLSX.utils.sheet_to_json(worksheet, {header: 1, raw: false, dateNF: 'yyyy-mm-dd'});
 
-                    // 1. 動態尋找包含「姓名」或「人名」的表頭列
                     let headerRowIdx = -1;
                     let nameCol = -1, classCol = -1, idCol = -1, walkCol = -1, parentCol = -1;
 
@@ -372,7 +391,6 @@
 
                     let headerRow = aoa[headerRowIdx];
 
-                    // 2. 定義各功能欄位索引
                     for (let c = 0; c < headerRow.length; c++) {
                         let text = sanitizeStr(headerRow[c]);
                         if (text.includes("班")) classCol = c;
@@ -381,11 +399,9 @@
                         else if (text.includes("家長")) parentCol = c;
                     }
 
-                    // 3. 動態追蹤所有「訓練日期」欄位
                     let dateCols = [];
                     for (let c = 0; c < headerRow.length; c++) {
                         if (c === nameCol || c === classCol || c === idCol || c === walkCol || c === parentCol) continue;
-                        
                         let dVal = formatDateCell(headerRow[c]);
                         if (dVal !== "") {
                             allDatesSet.add(dVal);
@@ -393,7 +409,6 @@
                         }
                     }
 
-                    // 4. 動態尋找活動名稱 (在表頭列之前的非空儲存格)
                     if (index === 0) {
                         for (let r = 0; r < headerRowIdx; r++) {
                             if (aoa[r]) {
@@ -410,7 +425,6 @@
                         if (!primaryActivityName) primaryActivityName = "訓練活動";
                     }
 
-                    // 5. 讀取學生資料與點名矩陣 (全動態索引)
                     for (let r = headerRowIdx + 1; r < aoa.length; r++) {
                         if (!aoa[r] || nameCol >= aoa[r].length) continue;
 
@@ -496,6 +510,68 @@
         autoSave();
     });
 
+    // 💡 核心更新：圖片上載與自動 OCR 辨識邏輯
+    imageUpload.addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+
+        const selectedDate = dateSelect.value;
+        if (!selectedDate) {
+            alert("請先在步驟 2 選擇需要標記缺席的訓練日期！");
+            imageUpload.value = "";
+            return;
+        }
+
+        ocrStatus.style.display = 'block';
+        ocrStatus.innerHTML = `<span style="color:#d35400;">⏳ 系統正在初始化 AI 視覺引擎，準備分析圖片...</span>`;
+        
+        let foundNames = new Set();
+
+        try {
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                ocrStatus.innerHTML = `<span style="color:#d35400;">⏳ 正在分析第 ${i + 1}/${files.length} 張圖片，請稍候...</span>`;
+                
+                // 執行 Tesseract.js，使用繁體中文 + 英文模型
+                const { data: { text } } = await Tesseract.recognize(
+                    file,
+                    'chi_tra+eng',
+                    { logger: m => {
+                        if (m.status === 'recognizing text') {
+                            ocrStatus.innerHTML = `<span style="color:#d35400;">⏳ 正在分析第 ${i + 1}/${files.length} 張圖片 (進度: ${Math.round(m.progress * 100)}%)...</span>`;
+                        }
+                    }}
+                );
+                
+                // 清除 OCR 產生的空格，避免中文名字間隔導致比對失敗
+                const cleanText = text.replace(/\s+/g, '');
+
+                rawStudents.forEach(student => {
+                    const cleanName = student.name.replace(/\s+/g, '');
+                    // 為了避免單字姓名誤判，要求姓名至少要包含 2 個字元以上
+                    if (cleanName && cleanName.length >= 2 && cleanText.includes(cleanName)) {
+                        attendanceMap[`${selectedDate}_${student.key}`] = "缺席";
+                        foundNames.add(student.name);
+                    }
+                });
+            }
+            
+            if (foundNames.size > 0) {
+                ocrStatus.innerHTML = `<span style="color:#28a745;">✅ 分析完成！已自動將以下學生於 ${selectedDate} 標記為「缺席」：<br>${Array.from(foundNames).join('、')}</span>`;
+                renderRollCallTable();
+                autoSave();
+            } else {
+                ocrStatus.innerHTML = `<span style="color:#dc3545;">⚠️ 分析完成，但在圖片中找不到符合系統名單的學生姓名（請確認圖片清晰度）。</span>`;
+            }
+        } catch (error) {
+            console.error(error);
+            ocrStatus.innerHTML = `<span style="color:#dc3545;">❌ 分析圖片時發生錯誤。</span>`;
+        }
+
+        // 清空 Input，允許使用者重複上載同一張圖片
+        imageUpload.value = "";
+    });
+
     function renderClassSidebar() {
         classSidebarList.innerHTML = "";
 
@@ -576,21 +652,17 @@
             const fixedDays = student.fixedAbsentDays || [];
             const tr = document.createElement('tr');
 
-            // 1. 班別
             const tdClass = document.createElement('td');
             tdClass.textContent = student.class;
 
-            // 2. 學號
             const tdId = document.createElement('td');
             tdId.textContent = student.studentId;
 
-            // 3. 姓名
             const tdName = document.createElement('td');
             const strongName = document.createElement('strong');
             strongName.textContent = student.name;
             tdName.appendChild(strongName);
 
-            // 4. 放學方式
             const tdDismiss = document.createElement('td');
             const spanDismiss = document.createElement('span');
             let methodCls = 'tag-none';
@@ -602,7 +674,6 @@
             spanDismiss.textContent = student.dismissMethod;
             tdDismiss.appendChild(spanDismiss);
 
-            // 5. 當日點名狀態
             const tdStatus = document.createElement('td');
             const statusGroup = document.createElement('div');
             statusGroup.className = 'status-btn-group';
@@ -626,7 +697,6 @@
             });
             tdStatus.appendChild(statusGroup);
 
-            // 6. 個人固定缺席日
             const tdFixed = document.createElement('td');
             const dayGroup = document.createElement('div');
             dayGroup.className = 'day-toggle-group';
@@ -643,7 +713,6 @@
             });
             tdFixed.appendChild(dayGroup);
 
-            // 7. 操作
             const tdAction = document.createElement('td');
             const editBtn = document.createElement('button');
             editBtn.type = 'button';
@@ -798,22 +867,16 @@
         }
     });
 
-    // 匯出原格式 Excel 矩陣
     document.getElementById('exportBtn').addEventListener('click', () => {
         let aoaData = [];
-
         aoaData.push([]);
         aoaData.push([]);
-
-        // Row 3: A3 填寫活動名稱
         aoaData.push([activityName]);
 
-        // Row 4: 表頭
         let headerRow = ["", "班別", "學號", "學生姓名", "", "先行", "家長", ""];
         dateList.forEach(d => headerRow.push(d));
         aoaData.push(headerRow);
 
-        // Row 5+: 學生與點名矩陣
         rawStudents.forEach(student => {
             const walkMark = student.hasWalk ? "✓" : "";
             const parentMark = student.hasParent ? "✓" : "";
