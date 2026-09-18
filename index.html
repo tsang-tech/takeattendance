@@ -510,7 +510,7 @@
         autoSave();
     });
 
-    // 圖像預處理：自動加白邊、轉灰階與高對比
+    // 圖像預處理：自動加白邊以保護邊緣文字
     function preprocessImageForOCR(file) {
         return new Promise((resolve) => {
             const img = new Image();
@@ -518,39 +518,47 @@
             img.onload = () => {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
-                const padding = 40; // 四周加上 40px 白邊，解決邊緣字辨識失敗問題
+                const padding = 50; // 加 50px 白邊防貼邊
                 
                 canvas.width = img.width + padding * 2;
                 canvas.height = img.height + padding * 2;
 
-                // 填滿白色背景
                 ctx.fillStyle = '#FFFFFF';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.drawImage(img, padding, padding);
 
-                // 二值化與強化黑白對比
-                const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const data = imgData.data;
-                for (let i = 0; i < data.length; i += 4) {
-                    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-                    const v = avg < 150 ? 0 : 255; // 強化字體邊緣
-                    data[i] = v;
-                    data[i + 1] = v;
-                    data[i + 2] = v;
-                }
-                ctx.putImageData(imgData, 0, 0);
                 resolve(canvas.toDataURL());
             };
         });
     }
 
-    // 計算兩字串相似字數（用於模糊比對錯別字）
-    function getMatchingCharCount(str1, str2) {
-        let count = 0;
-        for (let char of str1) {
-            if (str2.includes(char)) count++;
+    // 精確與連續視窗比對演算法（徹底解決散落單字誤判問題）
+    function isStudentMatched(studentName, ocrText) {
+        const cleanName = studentName.replace(/\s+/g, '');
+        if (!cleanName || cleanName.length < 2) return false;
+
+        // 1. 完全精準字串比對
+        if (ocrText.includes(cleanName)) return true;
+
+        // 2 字姓名：強制 100% 完全精準匹配，拒絕模糊容錯以防大面積誤判
+        if (cleanName.length < 3) return false;
+
+        // 3 字或以上姓名：使用滑動視窗比對連續文字，最多僅容許 1 個錯別字
+        const nameLen = cleanName.length;
+        for (let i = 0; i <= ocrText.length - nameLen; i++) {
+            const windowSub = ocrText.substr(i, nameLen);
+            let matchCount = 0;
+            for (let j = 0; j < nameLen; j++) {
+                if (windowSub[j] === cleanName[j]) {
+                    matchCount++;
+                }
+            }
+            // 例如 3 個字的名，必須在連續 3 個字中有 2 個字完全一致
+            if (matchCount >= nameLen - 1) {
+                return true;
+            }
         }
-        return count;
+        return false;
     }
 
     // 升級版圖片上載 OCR 處理
@@ -566,16 +574,16 @@
         }
 
         ocrStatus.style.display = 'block';
-        ocrStatus.innerHTML = `<span style="color:#d35400;">⏳ 系統正在進行圖像優化與 AI 辨識...</span>`;
+        ocrStatus.innerHTML = `<span style="color:#d35400;">⏳ 系統正在讀取並分析圖片...</span>`;
         
         let foundNames = new Set();
 
         try {
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-                ocrStatus.innerHTML = `<span style="color:#d35400;">⏳ 正在預處理並分析第 ${i + 1}/${files.length} 張圖片...</span>`;
+                ocrStatus.innerHTML = `<span style="color:#d35400;">⏳ 正在分析第 ${i + 1}/${files.length} 張圖片...</span>`;
                 
-                // 1. 先對圖片進行 Canvas 預處理
+                // 1. 進行圖像預處理（加白邊）
                 const processedImageData = await preprocessImageForOCR(file);
 
                 // 2. 執行 Tesseract OCR
@@ -589,25 +597,11 @@
                     }}
                 );
                 
-                // 清理文字雜訊與空白
+                // 清除換行與標點符號，保留純文字串
                 const cleanText = text.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '');
 
                 rawStudents.forEach(student => {
-                    const cleanName = student.name.replace(/\s+/g, '');
-                    if (!cleanName || cleanName.length < 2) return;
-
-                    // 精準比對
-                    let isMatch = cleanText.includes(cleanName);
-
-                    // 容錯比對：如果名字 3 個字中有 2 個字完全吻合（解決個別字被 OCR 識錯問題）
-                    if (!isMatch && cleanName.length >= 3) {
-                        const matchedChars = getMatchingCharCount(cleanName, cleanText);
-                        if (matchedChars >= cleanName.length - 1) {
-                            isMatch = true;
-                        }
-                    }
-
-                    if (isMatch) {
+                    if (isStudentMatched(student.name, cleanText)) {
                         attendanceMap[`${selectedDate}_${student.key}`] = "缺席";
                         foundNames.add(student.name);
                     }
@@ -615,11 +609,11 @@
             }
             
             if (foundNames.size > 0) {
-                ocrStatus.innerHTML = `<span style="color:#28a745;">✅ 分析完成！已自動將以下 ${foundNames.size} 位學生於 ${selectedDate} 標記為「缺席」：<br>${Array.from(foundNames).join('、')}</span>`;
+                ocrStatus.innerHTML = `<span style="color:#28a745;">✅ 分析完成！已精準將以下 ${foundNames.size} 位學生於 ${selectedDate} 標記為「缺席」：<br>${Array.from(foundNames).join('、')}</span>`;
                 renderRollCallTable();
                 autoSave();
             } else {
-                ocrStatus.innerHTML = `<span style="color:#dc3545;">⚠️ 分析完成，未找到吻合名單。請檢查截圖是否太模糊。</span>`;
+                ocrStatus.innerHTML = `<span style="color:#dc3545;">⚠️ 分析完成，未找到符合名單。請確認截圖是否清晰。</span>`;
             }
         } catch (error) {
             console.error(error);
