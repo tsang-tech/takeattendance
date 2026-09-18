@@ -75,10 +75,11 @@
         .checkbox-group { display: flex; gap: 15px; margin-bottom: 12px; align-items: center; }
         .checkbox-group label { font-weight: normal; margin-bottom: 0; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
         .checkbox-group input { width: auto; margin-bottom: 0; }
-        .modal-btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
+        .modal-btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; align-items: center; }
         .modal-btns button { width: auto; padding: 6px 12px; margin-bottom: 0; font-size: 13px; cursor: pointer; }
         .btn-confirm { background-color: #28a745; color: white; border: none; font-weight: bold; }
         .btn-cancel { background-color: #6c757d; color: white; border: none; }
+        .btn-delete { background-color: #dc3545; color: white; border: none; font-weight: bold; margin-right: auto; }
 
         @media (max-width: 768px) {
             body { padding: 8px; }
@@ -198,6 +199,7 @@
         </div>
 
         <div class="modal-btns">
+            <button type="button" class="btn-delete" id="btnDelete" onclick="deleteStudent()">🗑️ 刪除學生</button>
             <button type="button" class="btn-cancel" onclick="closeStudentModal()">取消</button>
             <button type="button" class="btn-confirm" onclick="saveStudent()">儲存</button>
         </div>
@@ -553,7 +555,6 @@
                     matchCount++;
                 }
             }
-            // 例如 3 個字的名，必須在連續 3 個字中有 2 個字完全一致
             if (matchCount >= nameLen - 1) {
                 return true;
             }
@@ -819,9 +820,11 @@
         editingStudentIndex = index;
         const modal = document.getElementById('studentModal');
         const title = document.getElementById('modalTitle');
+        const btnDelete = document.getElementById('btnDelete');
 
         if (index === -1) {
             title.textContent = "➕ 新增學生資料";
+            btnDelete.style.display = "none";
             document.getElementById('modalClass').value = currentClassFilter !== 'ALL' ? currentClassFilter : "";
             document.getElementById('modalId').value = "";
             document.getElementById('modalName').value = "";
@@ -829,6 +832,7 @@
             document.getElementById('modalParent').checked = false;
         } else {
             title.textContent = "✏️ 編輯學生資料";
+            btnDelete.style.display = "inline-block";
             const s = rawStudents[index];
             document.getElementById('modalClass').value = s.class;
             document.getElementById('modalId').value = s.studentId;
@@ -841,6 +845,32 @@
 
     function closeStudentModal() {
         document.getElementById('studentModal').style.display = 'none';
+    }
+
+    function deleteStudent() {
+        if (editingStudentIndex < 0 || editingStudentIndex >= rawStudents.length) return;
+        
+        const student = rawStudents[editingStudentIndex];
+        if (confirm(`確定要刪除學生「${student.name}」(${student.class} 班 / ${student.studentId} 號) 嗎？\n此操作無法復原！`)) {
+            // 清理考勤對應紀錄
+            dateList.forEach(d => {
+                delete attendanceMap[`${d}_${student.key}`];
+            });
+
+            // 從列表中移除
+            rawStudents.splice(editingStudentIndex, 1);
+
+            // 若目前篩選的班別已無學生，自動切換回全部
+            if (currentClassFilter !== 'ALL' && !rawStudents.some(s => s.class === currentClassFilter)) {
+                currentClassFilter = 'ALL';
+            }
+
+            closeStudentModal();
+            renderClassSidebar();
+            renderRollCallTable();
+            studentCount.textContent = rawStudents.length;
+            autoSave();
+        }
     }
 
     function saveStudent() {
